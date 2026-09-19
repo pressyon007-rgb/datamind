@@ -55,16 +55,14 @@ st.markdown("""
 
 # Helper Function: Load Data
 @st.cache_data
-def load_uploaded_file(file):
-    try:
-        if file.name.endswith('.csv'):
-            return pd.read_csv(file)
-        else:
-            return pd.read_excel(file)
-    except Exception as e:
-        st.error(f"Error reading file: {e}")
-        return None
-
+def load_data(uploaded_file):
+    if uploaded_file.name.endswith('.csv'):
+        df = pd.read_csv(uploaded_file)
+    else:
+        # Load the first sheet specifically to avoid dictionary/multi-sheet errors
+        df = pd.read_excel(uploaded_file, sheet_name=0, engine='openpyxl')
+    
+    return df
 # Machine Learning Trainer Function (Handles Classifier + Regressor)
 def train_risk_model(df, target_col):
     data = df.copy().dropna()
