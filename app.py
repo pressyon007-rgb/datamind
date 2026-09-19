@@ -124,7 +124,7 @@ st.sidebar.write("Upload a CSV or Excel file to analyze structure, quality, and 
 uploaded_file = st.sidebar.file_uploader("Upload CSV / Excel File", type=["csv", "xlsx"])
 
 if uploaded_file is not None:
-    df = load_uploaded_file(uploaded_file)
+    df = load_data(uploaded_file)
 
     if df is not None:
         # Target Selection in Sidebar
