@@ -1,6 +1,7 @@
 """
 app.py - Data Analyzer AI Platform
 Interactive Streamlit application for data analysis, visual exploration, machine learning, and decision support.
+Optimized for high-performance cloud deployment and low memory footprint.
 """
 
 import streamlit as st
@@ -85,27 +86,37 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# Helper Function: Robust Data Loading
+# Helper Function: Memory-Optimized Data Loader
 @st.cache_data
-def load_data(uploaded_file):
+def load_data(uploaded_file, row_limit=5000):
     try:
         if uploaded_file.name.lower().endswith('.csv'):
             df = pd.read_csv(uploaded_file)
         else:
-            df = pd.read_excel(uploaded_file, sheet_name=0, engine='openpyxl')
+            try:
+                # Attempt fast, low-memory reading with calamine or openpyxl
+                df = pd.read_excel(uploaded_file, sheet_name=0, engine='calamine')
+            except Exception:
+                df = pd.read_excel(uploaded_file, sheet_name=0, engine='openpyxl')
             
-        # Safeguard: Downsample if dataset exceeds 3,000 rows to prevent Streamlit RAM crashes
-        if len(df) > 3000:
-            st.warning("⚠️ Large dataset detected. Downsampling to 3,000 rows for high-performance cloud processing.")
-            df = df.sample(n=3000, random_state=42).reset_index(drop=True)
+        # Memory Optimization: Downcast 64-bit numbers to 32-bit
+        for col in df.select_dtypes(include=['float64']).columns:
+            df[col] = df[col].astype('float32')
+        for col in df.select_dtypes(include=['int64']).columns:
+            df[col] = df[col].astype('int32')
+
+        # Smart Sampling for large datasets
+        if len(df) > row_limit:
+            st.warning(f"⚠️ Dataset has {len(df):,} rows. Sampled to {row_limit:,} rows for cloud memory optimization.")
+            df = df.sample(n=row_limit, random_state=42).reset_index(drop=True)
             
         return df
     except Exception as e:
-        st.error(f"Error loading file: {e}")
+        st.error(f"Error loading file '{uploaded_file.name}': {e}")
         return None
 
 
-# Machine Learning Trainer Function (Handles Classifier + Regressor)
+# Machine Learning Trainer Function
 def train_risk_model(df, target_col):
     data = df.copy().dropna()
     if data.empty:
@@ -140,11 +151,10 @@ def train_risk_model(df, target_col):
     if X.empty or X.shape[1] == 0:
         raise ValueError("Not enough features available to train a prediction model.")
 
-    # Determine target variable type
     target_type = type_of_target(y)
     
     if target_type == 'continuous':
-        model = RandomForestRegressor(n_estimators=100, random_state=42)
+        model = RandomForestRegressor(n_estimators=50, random_state=42, n_jobs=-1)
         model.fit(X, y)
     else:
         if y.dtype == 'object' or isinstance(y.dtype, pd.CategoricalDtype):
@@ -152,7 +162,7 @@ def train_risk_model(df, target_col):
             y = target_le.fit_transform(y.astype(str))
             encoders[target_col] = target_le
             
-        model = RandomForestClassifier(n_estimators=100, random_state=42)
+        model = RandomForestClassifier(n_estimators=50, random_state=42, n_jobs=-1)
         model.fit(X, y)
     
     importances = pd.DataFrame({
@@ -169,17 +179,17 @@ st.sidebar.write("Upload a CSV or Excel file to analyze structure, quality, and 
 
 uploaded_file = st.sidebar.file_uploader("Upload CSV / Excel File", type=["csv", "xlsx"])
 
+# Option to select custom row limit in sidebar
+row_limit = st.sidebar.slider("Dataset Sampling Limit (Rows):", min_value=1000, max_value=10000, value=5000, step=1000)
+
 if uploaded_file is not None:
-    df = load_data(uploaded_file)
+    df = load_data(uploaded_file, row_limit=row_limit)
 
     if df is not None and not df.empty:
-        # Target Selection in Sidebar
         target_field = st.sidebar.selectbox("Select Target / Risk Field:", df.columns)
-        
-        # Dashboard Color Theme
         palette = st.sidebar.selectbox("Select Dashboard Color Theme:", ["Blues", "Viridis", "Cividis", "Plasma", "Turbo", "Magma"], index=0)
 
-        # Run Analytical Pipeline Safely
+        # Run Analytical Pipeline
         try:
             domain_info = detect_domain(df)
         except Exception:
@@ -214,7 +224,7 @@ if uploaded_file is not None:
         st.caption("Intelligent Data Analysis & Decision Support Platform")
         st.info(f"Detected Industry / Domain: **{domain_info.get('domain', 'General')}** (Confidence: **{domain_info.get('confidence', 'Low')}**)")
 
-        # Main Navigation Tabs
+        # Navigation Tabs
         tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
             "📋 Overview",
             "📊 Dashboard Analytics",
@@ -229,7 +239,7 @@ if uploaded_file is not None:
         with tab1:
             st.subheader("Dataset Summary & Structure")
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Total Records", f"{quality_info.get('total_rows', len(df)):,}")
+            c1.metric("Loaded Records", f"{quality_info.get('total_rows', len(df)):,}")
             c2.metric("Total Columns", f"{quality_info.get('total_cols', len(df.columns)):,}")
             c3.metric("Numeric Columns", len(df.select_dtypes(include=[np.number]).columns))
             c4.metric("Categorical Columns", len(df.select_dtypes(include=['object', 'category']).columns))
@@ -238,7 +248,7 @@ if uploaded_file is not None:
             st.subheader("Dataset Preview")
             st.dataframe(df.head(10), use_container_width=True)
 
-        # TAB 2: EXPANDED DASHBOARD ANALYTICS
+        # TAB 2: DASHBOARD ANALYTICS
         with tab2:
             st.subheader("Interactive Visual Dashboard & Custom Chart Builder")
             
@@ -246,7 +256,6 @@ if uploaded_file is not None:
             cat_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
             date_cols = df.select_dtypes(include=['datetime64', 'datetime']).columns.tolist()
 
-            # Attempt auto-parsing date columns if stored as strings
             if not date_cols:
                 for c in cat_cols:
                     if 'date' in c.lower() or 'time' in c.lower():
@@ -258,7 +267,6 @@ if uploaded_file is not None:
 
             valid_cat_cols = [c for c in cat_cols if not c.lower().endswith('id') and df[c].nunique() <= 50]
 
-            # Custom Chart Builder
             with st.expander("🎨 Custom Chart Builder (Interactive Options)", expanded=True):
                 b_col1, b_col2, b_col3, b_col4 = st.columns(4)
                 
@@ -272,7 +280,6 @@ if uploaded_file is not None:
                 y_axis = b_col3.selectbox("Select Y-Axis Column:", df.columns, index=y_default_idx)
                 agg_func = b_col4.selectbox("Aggregation Method:", ["Sum", "Mean", "Count", "Median"])
 
-                # Render Custom Chart
                 try:
                     fig = None
                     if chart_type in ["Bar Chart", "Pie / Donut Chart", "Line Chart"]:
@@ -328,7 +335,6 @@ if uploaded_file is not None:
 
             st.markdown("---")
 
-            # Automated Multi-View Grid
             st.markdown("### 📊 Automated Multi-Metric Visual Insights")
             grid_col1, grid_col2 = st.columns(2)
 
@@ -430,17 +436,21 @@ if uploaded_file is not None:
             else:
                 st.info("No domain hypothesis questions generated for this dataset.")
 
-        # TAB 6: RISK & FEATURE IMPORTANCE
+        # TAB 6: RISK & FEATURE IMPORTANCE (Lazy Loaded via Button)
         with tab6:
-            st.subheader(f"Feature Importance for Target: '{target_field}'")
-            try:
-                model, encoders, importances, feature_names = train_risk_model(df, target_field)
-                fig_imp = px.bar(importances.head(10), x='Importance', y='Feature', orientation='h',
-                                 title="Top Drivers / Features Influencing Target Variable")
-                fig_imp.update_layout(yaxis={'categoryorder': 'total ascending'}, height=400)
-                st.plotly_chart(fig_imp, use_container_width=True)
-            except Exception as e:
-                st.error(f"Could not build feature importance model: {e}")
+            st.subheader(f"Feature Importance Driver Analysis: '{target_field}'")
+            st.write("Train a Random Forest model to calculate feature importances on demand.")
+            
+            if st.button("🚀 Train & Calculate Drivers", type="primary"):
+                with st.spinner("Training Random Forest model..."):
+                    try:
+                        model, encoders, importances, feature_names = train_risk_model(df, target_field)
+                        fig_imp = px.bar(importances.head(10), x='Importance', y='Feature', orientation='h',
+                                         title=f"Top Drivers Influencing '{target_field}'")
+                        fig_imp.update_layout(yaxis={'categoryorder': 'total ascending'}, height=400)
+                        st.plotly_chart(fig_imp, use_container_width=True)
+                    except Exception as e:
+                        st.error(f"Could not build feature importance model: {e}")
 
         # TAB 7: RECOMMENDATIONS
         with tab7:
