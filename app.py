@@ -90,15 +90,18 @@ st.markdown("""
 def load_data(uploaded_file):
     try:
         if uploaded_file.name.lower().endswith('.csv'):
-            return pd.read_csv(uploaded_file)
+            df = pd.read_csv(uploaded_file)
         else:
-            # Force reading single sheet to prevent returning a dict of dataframes
-            try:
-                return pd.read_excel(uploaded_file, sheet_name=0, engine='openpyxl')
-            except Exception:
-                return pd.read_excel(uploaded_file, sheet_name=0)
+            df = pd.read_excel(uploaded_file, sheet_name=0, engine='openpyxl')
+            
+        # Safeguard: Downsample if dataset exceeds 3,000 rows to prevent Streamlit RAM crashes
+        if len(df) > 3000:
+            st.warning("⚠️ Large dataset detected. Downsampling to 3,000 rows for high-performance cloud processing.")
+            df = df.sample(n=3000, random_state=42).reset_index(drop=True)
+            
+        return df
     except Exception as e:
-        st.error(f"Error loading file '{uploaded_file.name}': {e}")
+        st.error(f"Error loading file: {e}")
         return None
 
 
