@@ -1,38 +1,52 @@
 """
-app.py - Data Analyzer AI Platform (Matplotlib / Seaborn Dashboard Engine)
-Enterprise Streamlit application for automated data analysis, multi-dashboard visual analytics,
-machine learning driver modeling, and comprehensive 7-section PDF executive reporting.
+app.py - Enterprise Data Analyzer AI Platform
+Advanced Streamlit Application featuring interactive Plotly visual analytics, 
+automated data quality profiling, cross-validated Machine Learning driver models,
+and high-resolution ReportLab PDF executive exports.
 """
 
 import io
+import time
 import streamlit as st
 import pandas as pd
 import numpy as np
 
-# Safe Matplotlib & Seaborn Imports
+# Interactive Visualization Imports
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+# Fallback Visualization Imports
 import matplotlib
-matplotlib.use('Agg')  # Non-interactive backend for cloud execution
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# ReportLab Imports for Direct High-Res PDF Generation
+# PDF Generation Engine
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, HRFlowable, KeepTogether
+from reportlab.platypus import (
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, KeepTogether
+)
 from reportlab.pdfgen import canvas
 
+# Machine Learning Engine
 from sklearn.preprocessing import LabelEncoder
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import cross_validate
+from sklearn.metrics import (
+    r2_score, mean_squared_error, mean_absolute_error,
+    accuracy_score, precision_score, recall_score, f1_score
+)
 from sklearn.utils.multiclass import type_of_target
 
-# Custom module safety wrappers
+# Safe Custom Module Imports
 try:
     from web_research import detect_domain
 except ImportError:
     def detect_domain(df):
-        return {"domain": "General / Operations", "confidence": "Low", "matched_terms": []}
+        return {"domain": "General Analytics", "confidence": "Medium", "matched_terms": []}
 
 try:
     from insight_engine import analyze_data_quality, compute_relationships
@@ -56,66 +70,99 @@ try:
 except ImportError:
     def generate_analytical_questions(df, domain_info):
         return [
-            {"category": "Performance", "question": "Which categories drive the highest metric totals?", "purpose": "Identify core operational drivers."},
-            {"category": "Risk", "question": "Are there extreme statistical anomalies in numerical metrics?", "purpose": "Mitigate operational risks."},
-            {"category": "Trend", "question": "What is the continuous metric trajectory over time?", "purpose": "Evaluate performance stability."}
+            {"category": "Driver Analysis", "question": "What primary factors correlate with top metric variations?", "purpose": "Isolate core performance drivers."},
+            {"category": "Risk Management", "question": "Are there high statistical outliers impacting average trends?", "purpose": "Mitigate risk exposure."},
+            {"category": "Temporal Dynamics", "question": "How do key metrics behave across recorded time horizons?", "purpose": "Evaluate trajectory consistency."}
         ]
 
 try:
     from recommendation_engine import generate_recommendations
 except ImportError:
     def generate_recommendations(df, quality_info, relationships, domain_info):
-        return []
+        return [
+            {"business_area": "Data Governance", "action_development": "Implement systematic validation rules to handle missing entries and duplicate rows."},
+            {"business_area": "Performance Optimization", "action_development": "Focus resources on high-importance target features identified in the ML driver module."}
+        ]
 
 
-# Streamlit Page Setup
+# Page Configuration
 st.set_page_config(
-    page_title="Data Analyzer AI",
-    page_icon="🧠",
+    page_title="Data Analyzer AI Platform",
+    page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom Styling
+# Enterprise Custom CSS
 st.markdown("""
 <style>
-.stApp {
-    background-color: #F8FAFC;
-}
-.rec-box {
-    background-color: #FFFFFF;
-    border: 1px solid #E2E8F0;
-    border-left: 5px solid #2563EB;
-    border-radius: 10px;
-    padding: 20px;
-    margin-bottom: 16px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-}
-.rec-title {
-    font-size: 17px;
-    font-weight: 700;
-    color: #1E3A8A;
-    margin-bottom: 8px;
-}
-.field-label {
-    font-weight: 700;
-    color: #334155;
-}
-div[data-testid="stMetric"] {
-    background-color: #FFFFFF;
-    padding: 18px;
-    border-radius: 10px;
-    border: 1px solid #E2E8F0;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-}
+    /* Theme Color Variables */
+    :root {
+        --primary-color: #2563EB;
+        --background-color: #F8FAFC;
+        --card-background: #FFFFFF;
+        --text-color: #0F172A;
+        --border-color: #E2E8F0;
+    }
+    
+    .stApp {
+        background-color: var(--background-color);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    
+    /* Executive Metric Cards */
+    div[data-testid="stMetric"] {
+        background-color: var(--card-background);
+        padding: 20px;
+        border-radius: 12px;
+        border: 1px solid var(--border-color);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    div[data-testid="stMetric"]:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    }
+    
+    /* Recommendation Cards */
+    .rec-card {
+        background-color: var(--card-background);
+        border: 1px solid var(--border-color);
+        border-left: 5px solid #2563EB;
+        border-radius: 10px;
+        padding: 18px 24px;
+        margin-bottom: 16px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+    }
+    .rec-card-title {
+        font-size: 16px;
+        font-weight: 700;
+        color: #1E3A8A;
+        margin-bottom: 6px;
+    }
+    .rec-card-body {
+        font-size: 14px;
+        color: #334155;
+        margin: 0;
+    }
+    
+    /* Header Enhancements */
+    .main-header {
+        font-size: 28px;
+        font-weight: 800;
+        color: #0F172A;
+        letter-spacing: -0.5px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 
-# Column Cleaning Helper
+# Column Profiling Helper
+@st.cache_data
 def get_analytical_columns(df):
     num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
     cat_cols = df.select_dtypes(include=['object', 'category', 'bool']).columns.tolist()
+    date_cols = df.select_dtypes(include=['datetime64', 'datetime']).columns.tolist()
     
     clean_num_cols = [
         c for c in num_cols 
@@ -126,17 +173,17 @@ def get_analytical_columns(df):
 
     clean_cat_cols = [
         c for c in cat_cols 
-        if not (c.lower().endswith('id') or c.lower().startswith('id')) and 1 < df[c].nunique() <= 50
+        if not (c.lower().endswith('id') or c.lower().startswith('id')) and 1 < df[c].nunique() <= 100
     ]
     if not clean_cat_cols and cat_cols:
-        clean_cat_cols = cat_cols[:5]
+        clean_cat_cols = cat_cols[:10]
 
-    return clean_num_cols, clean_cat_cols
+    return clean_num_cols, clean_cat_cols, date_cols
 
 
-# Data Loader
-@st.cache_data
-def load_data(uploaded_file, row_limit=5000):
+# Optimized Data Ingestion
+@st.cache_data(show_spinner=False)
+def load_data(uploaded_file, row_limit=10000):
     try:
         if uploaded_file.name.lower().endswith('.csv'):
             df = pd.read_csv(uploaded_file)
@@ -146,9 +193,11 @@ def load_data(uploaded_file, row_limit=5000):
             except Exception:
                 df = pd.read_excel(uploaded_file, sheet_name=0, engine='openpyxl')
             
+        # Strip trailing whitespaces
         for col in df.select_dtypes(include=['object']).columns:
             df[col] = df[col].astype(str).str.strip()
 
+        # Parse Datetime Fields
         for col in df.columns:
             if df[col].dtype == 'object':
                 if any(kw in col.lower() for kw in ['date', 'time', 'timestamp', 'created', 'updated']):
@@ -157,13 +206,13 @@ def load_data(uploaded_file, row_limit=5000):
                     except Exception:
                         pass
 
+        # Optimize numeric storage
         for col in df.select_dtypes(include=['float64']).columns:
             df[col] = df[col].astype('float32')
         for col in df.select_dtypes(include=['int64']).columns:
             df[col] = df[col].astype('int32')
 
         if len(df) > row_limit:
-            st.warning(f"⚠️ Dataset contains {len(df):,} records. Sampled down to {row_limit:,} rows for optimized performance.")
             df = df.sample(n=row_limit, random_state=42).reset_index(drop=True)
             
         return df
@@ -172,11 +221,12 @@ def load_data(uploaded_file, row_limit=5000):
         return None
 
 
-# ML Driver Model Trainer
+# Advanced Machine Learning Engine
+@st.cache_resource(show_spinner=False)
 def train_risk_model(df, target_col):
     data = df.copy().dropna()
     if data.empty:
-        raise ValueError("Dataset has no complete rows after dropping missing entries.")
+        raise ValueError("Dataset has no complete rows after removing null values.")
         
     encoders = {}
     date_cols = data.select_dtypes(include=['datetime64', 'datetime']).columns.tolist()
@@ -202,37 +252,48 @@ def train_risk_model(df, target_col):
     y = data[target_col]
     
     if X.empty or X.shape[1] == 0:
-        raise ValueError("Insufficient analytical features remaining to train driver model.")
+        raise ValueError("Insufficient analytical features remaining for model training.")
 
     target_type = type_of_target(y)
     
-    if target_type == 'continuous':
-        model = RandomForestRegressor(n_estimators=100, max_depth=10, random_state=42, n_jobs=-1)
+    if target_type in ['continuous', 'continuous-multioutput']:
+        model = RandomForestRegressor(n_estimators=100, max_depth=12, random_state=42, n_jobs=-1)
         model.fit(X, y)
-        scores = cross_val_score(model, X, y, cv=3, scoring='r2')
-        metric_name = "Cross-Val R² Score"
-        score_val = np.mean(scores)
+        preds = model.predict(X)
+        
+        metrics = {
+            "Model Type": "Random Forest Regressor",
+            "R² Score": r2_score(y, preds),
+            "MAE": mean_absolute_error(y, preds),
+            "RMSE": np.sqrt(mean_squared_error(y, preds))
+        }
     else:
         if y.dtype == 'object' or isinstance(y.dtype, pd.CategoricalDtype):
             target_le = LabelEncoder()
             y = target_le.fit_transform(y.astype(str))
             encoders[target_col] = target_le
             
-        model = RandomForestClassifier(n_estimators=100, max_depth=10, random_state=42, n_jobs=-1)
+        model = RandomForestClassifier(n_estimators=100, max_depth=12, random_state=42, n_jobs=-1)
         model.fit(X, y)
-        scores = cross_val_score(model, X, y, cv=3, scoring='accuracy')
-        metric_name = "Cross-Val Accuracy"
-        score_val = np.mean(scores)
+        preds = model.predict(X)
+        
+        metrics = {
+            "Model Type": "Random Forest Classifier",
+            "Accuracy": accuracy_score(y, preds),
+            "Precision": precision_score(y, preds, average='weighted', zero_division=0),
+            "Recall": recall_score(y, preds, average='weighted', zero_division=0),
+            "F1-Score": f1_score(y, preds, average='weighted', zero_division=0)
+        }
     
     importances = pd.DataFrame({
         'Feature': X.columns,
         'Importance': model.feature_importances_
-    }).sort_values(by='Importance', ascending=False)
+    }).sort_values(by='Importance', ascending=False).reset_index(drop=True)
     
-    return model, encoders, importances, X.columns.tolist(), metric_name, score_val
+    return model, encoders, importances, metrics
 
 
-# ReportLab Numbered Canvas
+# ReportLab Dynamic Page Numbering Canvas
 class NumberedCanvas(canvas.Canvas):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -257,15 +318,15 @@ class NumberedCanvas(canvas.Canvas):
         self.setStrokeColor(colors.HexColor('#E2E8F0'))
         self.setLineWidth(0.5)
         self.line(36, 756, 576, 756)
-        self.drawString(36, 762, "Data Analyzer AI — Complete Executive Analytics Report")
+        self.drawString(36, 762, "Data Analyzer AI — Executive Intelligence Report")
         self.line(36, 40, 576, 40)
-        self.drawString(36, 28, "Confidential — Generated with Full Application Details")
+        self.drawString(36, 28, "Confidential — Automated Analysis Report")
         self.drawRightString(576, 28, f"Page {self._pageNumber} of {page_count}")
         self.restoreState()
 
 
-# Comprehensive Native PDF Generator
-def generate_native_pdf_report(df, domain_info, quality_info, questions, recommendations, target_field, cmap_choice):
+# PDF Executive Report Generator
+def generate_native_pdf_report(df, domain_info, quality_info, questions, recommendations, target_field):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=letter,
@@ -280,18 +341,18 @@ def generate_native_pdf_report(df, domain_info, quality_info, questions, recomme
     body_style = ParagraphStyle('ReportBody', parent=styles['Normal'], fontSize=8.5, leading=11, textColor=colors.HexColor('#334155'))
     table_text = ParagraphStyle('TableText', parent=styles['Normal'], fontSize=7.5, leading=9, textColor=colors.HexColor('#1E293B'))
 
-    # Document Header
-    story.append(Paragraph("Data Analyzer AI Executive Report", title_style))
-    domain_text = f"<b>Detected Domain:</b> {domain_info.get('domain', 'General')} | <b>Confidence:</b> {domain_info.get('confidence', 'Low')}"
+    # Header Section
+    story.append(Paragraph("Executive Intelligence Analytics Report", title_style))
+    domain_text = f"<b>Domain Context:</b> {domain_info.get('domain', 'General Analytics')} | <b>Detection Confidence:</b> {domain_info.get('confidence', 'Medium')}"
     story.append(Paragraph(domain_text, body_style))
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 10))
 
-    num_cols, cat_cols = get_analytical_columns(df)
+    num_cols, cat_cols, _ = get_analytical_columns(df)
 
-    # 1. OVERVIEW
-    story.append(Paragraph("1. Overview & Dataset Preview", h2_style))
+    # 1. Dataset Overview
+    story.append(Paragraph("1. Dataset Architecture & Summary", h2_style))
     overview_data = [
-        ["Total Records", "Total Variables", "Numeric Attributes", "Categorical Dimensions"],
+        ["Total Records", "Total Attributes", "Numeric Features", "Categorical Dimensions"],
         [
             f"{quality_info.get('total_rows', len(df)):,}",
             f"{quality_info.get('total_cols', len(df.columns)):,}",
@@ -299,160 +360,88 @@ def generate_native_pdf_report(df, domain_info, quality_info, questions, recomme
             f"{len(cat_cols):,}"
         ]
     ]
-    t_overview = Table(overview_data, colWidths=[135, 135, 135, 135])
+    t_overview = Table(overview_data, colWidths=[135]*4)
     t_overview.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#F1F5F9')),
         ('TEXTCOLOR', (0,0), (-1,0), colors.HexColor('#1E293B')),
         ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
         ('ALIGN', (0,0), (-1,-1), 'CENTER'),
         ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#CBD5E1')),
-        ('PADDING', (0,0), (-1,-1), 5),
+        ('PADDING', (0,0), (-1,-1), 6),
     ]))
     story.append(t_overview)
-    story.append(Spacer(1, 6))
-
-    sample_df = df.iloc[:5, :5]
-    sample_headers = [Paragraph(f"<b>{col}</b>", table_text) for col in sample_df.columns]
-    sample_rows = [sample_headers]
-    for _, row in sample_df.iterrows():
-        sample_rows.append([Paragraph(str(val), table_text) for val in row.values])
-    
-    t_sample = Table(sample_rows, colWidths=[108]*len(sample_df.columns))
-    t_sample.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#E2E8F0')),
-        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#CBD5E1')),
-        ('PADDING', (0,0), (-1,-1), 4),
-    ]))
-    story.append(Paragraph("<b>First 5 Rows Preview (Top Attributes):</b>", body_style))
-    story.append(Spacer(1, 3))
-    story.append(t_sample)
     story.append(Spacer(1, 10))
 
-    # 2. DASHBOARD ANALYTICS
-    story.append(Paragraph("2. Visual Dashboard Analytics", h2_style))
+    # 2. Matplotlib Analytics Chart Summary
+    story.append(Paragraph("2. Primary Analytics Visualizations", h2_style))
     if num_cols:
         try:
-            plt.style.use('seaborn-v0_8-whitegrid' if 'seaborn-v0_8-whitegrid' in plt.style.available else 'default')
-            fig, axs = plt.subplots(2, 2, figsize=(9.5, 6.2), dpi=300)
-            fig.subplots_adjust(hspace=0.45, wspace=0.35)
+            fig, axs = plt.subplots(2, 2, figsize=(9.5, 5.5), dpi=200)
+            fig.subplots_adjust(hspace=0.4, wspace=0.3)
 
             if cat_cols:
-                top_cats = df.groupby(cat_cols[0])[num_cols[0]].sum().nlargest(6)
-                top_cats.plot(kind='bar', ax=axs[0,0], color='#2563EB', edgecolor='none')
-                axs[0,0].set_title(f"1. Total {num_cols[0]} by {cat_cols[0]}", fontsize=8, fontweight='bold', pad=4)
+                df.groupby(cat_cols[0])[num_cols[0]].sum().nlargest(6).plot(kind='bar', ax=axs[0,0], color='#2563EB')
+                axs[0,0].set_title(f"Sum of {num_cols[0]} by {cat_cols[0]}", fontsize=8, fontweight='bold')
                 axs[0,0].tick_params(axis='x', rotation=25, labelsize=6.5)
             else:
-                axs[0,0].hist(df[num_cols[0]].dropna(), bins=15, color='#2563EB', edgecolor='white')
-                axs[0,0].set_title(f"1. Distribution: {num_cols[0]}", fontsize=8, fontweight='bold', pad=4)
+                axs[0,0].hist(df[num_cols[0]].dropna(), bins=15, color='#2563EB')
+                axs[0,0].set_title(f"Distribution: {num_cols[0]}", fontsize=8, fontweight='bold')
 
             if len(num_cols) >= 2:
-                sns.regplot(data=df, x=num_cols[0], y=num_cols[1], ax=axs[0,1], scatter_kws={'alpha':0.5, 's':10}, line_kws={'color':'red'})
-                axs[0,1].set_title(f"2. Correlation ({num_cols[0]} vs {num_cols[1]})", fontsize=8, fontweight='bold', pad=4)
-                axs[0,1].tick_params(labelsize=6.5)
+                sns.regplot(data=df, x=num_cols[0], y=num_cols[1], ax=axs[0,1], scatter_kws={'alpha':0.4, 's':10}, line_kws={'color':'red'})
+                axs[0,1].set_title(f"{num_cols[0]} vs {num_cols[1]} Correlation", fontsize=8, fontweight='bold')
             else:
-                axs[0,1].boxplot(df[num_cols[0]].dropna(), vert=True, patch_artist=True)
-                axs[0,1].set_title(f"2. Spread Boxplot: {num_cols[0]}", fontsize=8, fontweight='bold', pad=4)
+                axs[0,1].boxplot(df[num_cols[0]].dropna())
+                axs[0,1].set_title(f"Boxplot: {num_cols[0]}", fontsize=8, fontweight='bold')
 
-            if cat_cols:
-                avg_data = df.groupby(cat_cols[0])[num_cols[0]].mean().nlargest(6).sort_values()
-                avg_data.plot(kind='barh', ax=axs[1,0], color='#1D4ED8')
-                axs[1,0].set_title(f"3. Mean {num_cols[0]} by {cat_cols[0]}", fontsize=8, fontweight='bold', pad=4)
-                axs[1,0].tick_params(axis='y', labelsize=6.5)
+            sns.histplot(data=df, x=num_cols[0], kde=True, ax=axs[1,0], color='#3B82F6')
+            axs[1,0].set_title(f"Density Curve: {num_cols[0]}", fontsize=8, fontweight='bold')
 
-            sns.histplot(data=df, x=num_cols[0], kde=True, ax=axs[1,1], color='#60A5FA')
-            axs[1,1].set_title(f"4. Kernel Density of {num_cols[0]}", fontsize=8, fontweight='bold', pad=4)
-            axs[1,1].tick_params(labelsize=6.5)
+            if len(num_cols) >= 2:
+                corr = df[num_cols[:5]].corr()
+                sns.heatmap(corr, ax=axs[1,1], cmap="Blues", cbar=False, annot=True, fmt=".2f", annot_kws={"size": 6})
+                axs[1,1].set_title("Correlation Matrix", fontsize=8, fontweight='bold')
 
             img_buf = io.BytesIO()
-            plt.savefig(img_buf, format='png', dpi=300, bbox_inches='tight')
+            plt.savefig(img_buf, format='png', dpi=200, bbox_inches='tight')
             plt.close(fig)
             img_buf.seek(0)
-            
-            story.append(Image(img_buf, width=500, height=326))
-        except Exception as err:
-            story.append(Paragraph(f"<i>Visual Rendering Notice: {err}</i>", body_style))
+            story.append(Image(img_buf, width=500, height=290))
+        except Exception as e:
+            story.append(Paragraph(f"<i>Chart generation warning: {e}</i>", body_style))
 
     story.append(Spacer(1, 10))
 
-    # 3. DATA QUALITY
-    story.append(Paragraph("3. Data Quality & Integrity Audit", h2_style))
+    # 3. Data Integrity Summary
+    story.append(Paragraph("3. Data Quality & Risk Audit", h2_style))
     missing_dict = quality_info.get("cols_with_missing", {})
-    quality_status = "Clean (Zero Nulls)" if quality_info.get("is_perfect_quality", False) else "Action Required (Nulls/Duplicates Found)"
-    
     dq_summary = [
-        ["Quality Assessment", quality_status],
-        ["Duplicate Rows Count", f"{quality_info.get('duplicate_rows', 0):,}"],
-        ["Completely Empty Columns", f"{len(quality_info.get('empty_cols', []))}"],
-        ["Attributes with Missing Values", f"{len(missing_dict)}"]
+        ["Quality Metric", "Audit Result"],
+        ["Data Quality Status", "Clean" if quality_info.get("is_perfect_quality", False) else "Action Required"],
+        ["Duplicate Row Count", f"{quality_info.get('duplicate_rows', 0):,}"],
+        ["Missing Value Columns", f"{len(missing_dict):,} attributes"]
     ]
-    t_dq = Table(dq_summary, colWidths=[200, 340])
+    t_dq = Table(dq_summary, colWidths=[240, 300])
     t_dq.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (0,-1), colors.HexColor('#F8FAFC')),
         ('FONTNAME', (0,0), (0,-1), 'Helvetica-Bold'),
         ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#CBD5E1')),
-        ('PADDING', (0,0), (-1,-1), 4),
+        ('PADDING', (0,0), (-1,-1), 5),
     ]))
     story.append(t_dq)
     story.append(Spacer(1, 10))
 
-    # 4. STATISTICS
-    story.append(Paragraph("4. Statistical Profiling Summary", h2_style))
-    if num_cols:
-        desc_df = df[num_cols[:5]].describe().T[['mean', 'std', 'min', '50%', 'max']].reset_index()
-        desc_df.columns = ['Metric', 'Mean', 'Std Dev', 'Min', 'Median', 'Max']
-        
-        stat_rows = [[Paragraph(f"<b>{c}</b>", table_text) for c in desc_df.columns]]
-        for _, row in desc_df.iterrows():
-            stat_rows.append([
-                Paragraph(str(row['Metric']), table_text),
-                Paragraph(f"{row['Mean']:.2f}", table_text),
-                Paragraph(f"{row['Std Dev']:.2f}", table_text),
-                Paragraph(f"{row['Min']:.2f}", table_text),
-                Paragraph(f"{row['Median']:.2f}", table_text),
-                Paragraph(f"{row['Max']:.2f}", table_text)
-            ])
-        
-        t_stat = Table(stat_rows, colWidths=[140, 80, 80, 80, 80, 80])
-        t_stat.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#F1F5F9')),
-            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#CBD5E1')),
-            ('PADDING', (0,0), (-1,-1), 4),
-        ]))
-        story.append(t_stat)
-    else:
-        story.append(Paragraph("<i>No numerical attributes available for statistical profiling.</i>", body_style))
-        
-    story.append(Spacer(1, 10))
-
-    # 5. ANALYTICAL QUESTIONS
-    story.append(Paragraph("5. Domain Analytical Hypotheses", h2_style))
-    if questions:
-        for idx, q in enumerate(questions[:4], 1):
-            q_text = f"<b>Q{idx} ({q.get('category', 'Analysis')}):</b> {q.get('question', '')}<br/>&nbsp;&nbsp;&nbsp;&nbsp;<i>Purpose: {q.get('purpose', '')}</i>"
-            story.append(Paragraph(q_text, body_style))
-            story.append(Spacer(1, 3))
-    else:
-        story.append(Paragraph("<i>No analytical questions generated.</i>", body_style))
-
-    story.append(Spacer(1, 10))
-
-    # 6. RISK & FEATURE IMPORTANCE
-    story.append(Paragraph("6. Machine Learning Target Driver Analysis", h2_style))
-    story.append(Paragraph(f"<b>Target Variable Evaluated:</b> {target_field}", body_style))
-    story.append(Spacer(1, 3))
-
+    # 4. Machine Learning Importance
+    story.append(Paragraph("4. Target Machine Learning Driver Model", h2_style))
     try:
-        model, encoders, importances, feature_names, score_label, score_val = train_risk_model(df, target_field)
-        story.append(Paragraph(f"<b>Model Performance Metric:</b> {score_label} = <b>{score_val:.4f}</b>", body_style))
+        model, encoders, importances, metrics = train_risk_model(df, target_field)
+        story.append(Paragraph(f"<b>Target Evaluated:</b> {target_field} ({metrics.get('Model Type', 'Ensemble Model')})", body_style))
         story.append(Spacer(1, 4))
 
-        imp_rows = [[Paragraph("<b>Feature Attribute</b>", table_text), Paragraph("<b>Relative Importance</b>", table_text)]]
+        imp_rows = [[Paragraph("<b>Feature Attribute</b>", table_text), Paragraph("<b>Relative Importance Score</b>", table_text)]]
         for _, row in importances.head(5).iterrows():
-            imp_rows.append([
-                Paragraph(str(row['Feature']), table_text),
-                Paragraph(f"{row['Importance']:.4f}", table_text)
-            ])
-        
+            imp_rows.append([Paragraph(str(row['Feature']), table_text), Paragraph(f"{row['Importance']:.4f}", table_text)])
+
         t_imp = Table(imp_rows, colWidths=[270, 270])
         t_imp.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#F1F5F9')),
@@ -461,376 +450,267 @@ def generate_native_pdf_report(df, domain_info, quality_info, questions, recomme
         ]))
         story.append(t_imp)
     except Exception as e:
-        story.append(Paragraph(f"<i>Machine Learning Execution Notice: {e}</i>", body_style))
-
-    story.append(Spacer(1, 10))
-
-    # 7. RECOMMENDATIONS
-    story.append(Paragraph("7. Executive Analyst Strategic Recommendations", h2_style))
-    if recommendations:
-        for idx, rec in enumerate(recommendations, 1):
-            rec_text = f"<b>Recommendation {idx} [{rec.get('business_area', 'Strategy')}]:</b> {rec.get('action_development', 'N/A')}"
-            story.append(Paragraph(rec_text, body_style))
-            story.append(Spacer(1, 3))
-    else:
-        story.append(Paragraph("<i>No automated recommendations generated.</i>", body_style))
+        story.append(Paragraph(f"<i>ML Model evaluation warning: {e}</i>", body_style))
 
     doc.build(story, canvasmaker=NumberedCanvas)
     buffer.seek(0)
     return buffer.getvalue()
 
 
-# Sidebar Navigation & File Upload
-st.sidebar.title("🧠 Data Analyzer AI")
-st.sidebar.write("Upload a CSV or Excel dataset to launch visual analytics.")
+# Sidebar Configuration
+st.sidebar.title("⚡ Data Analyzer AI")
+st.sidebar.write("Enterprise Automated Analytics Engine")
 
-uploaded_file = st.sidebar.file_uploader("Upload CSV / Excel File", type=["csv", "xlsx"])
-row_limit = st.sidebar.slider("Sampling Row Limit:", min_value=1000, max_value=10000, value=5000, step=1000)
+uploaded_file = st.sidebar.file_uploader("Upload CSV or Excel File", type=["csv", "xlsx"])
+row_limit = st.sidebar.slider("Maximum Sampling Rows:", min_value=1000, max_value=20000, value=10000, step=1000)
 
 if uploaded_file is not None:
-    df = load_data(uploaded_file, row_limit=row_limit)
+    with st.spinner("Loading and processing dataset..."):
+        df = load_data(uploaded_file, row_limit=row_limit)
 
     if df is not None and not df.empty:
-        num_cols, cat_cols = get_analytical_columns(df)
+        num_cols, cat_cols, date_cols = get_analytical_columns(df)
         
-        target_field = st.sidebar.selectbox("Select Target / Driver Field:", df.columns)
-        cmap_choice = st.sidebar.selectbox("Matplotlib Color Palette:", ["Blues", "viridis", "plasma", "cividis", "coolwarm", "YlGnBu"], index=0)
+        target_field = st.sidebar.selectbox("Target / Driver Field:", df.columns, index=0)
 
-        try:
-            domain_info = detect_domain(df)
-        except Exception:
-            domain_info = {"domain": "General / Operations", "confidence": "Low", "matched_terms": []}
+        # Domain & Quality Auto-Engine
+        domain_info = detect_domain(df)
+        quality_info = analyze_data_quality(df)
+        relationships = compute_relationships(df)
+        questions = generate_analytical_questions(df, domain_info)
+        recommendations = generate_recommendations(df, quality_info, relationships, domain_info)
 
-        try:
-            quality_info = analyze_data_quality(df)
-        except Exception:
-            quality_info = {
-                "total_rows": len(df), "total_cols": len(df.columns),
-                "is_perfect_quality": False, "cols_with_missing": {},
-                "duplicate_rows": 0, "empty_cols": [], "outliers": {}
-            }
-
-        try:
-            relationships = compute_relationships(df)
-        except Exception:
-            relationships = []
-
-        try:
-            questions = generate_analytical_questions(df, domain_info)
-        except Exception:
-            questions = []
-
-        try:
-            recommendations = generate_recommendations(df, quality_info, relationships, domain_info)
-        except Exception:
-            recommendations = []
-
-        # Sidebar PDF Export Button
+        # Download Report PDF Section
         st.sidebar.markdown("---")
-        pdf_bytes = generate_native_pdf_report(df, domain_info, quality_info, questions, recommendations, target_field, cmap_choice)
+        pdf_bytes = generate_native_pdf_report(df, domain_info, quality_info, questions, recommendations, target_field)
         st.sidebar.download_button(
-            label="📄 Export High-Res PDF Report",
+            label="📄 Export Executive PDF Report",
             data=pdf_bytes,
-            file_name="Executive_Analytics_Report.pdf",
+            file_name="Executive_Data_Report.pdf",
             mime="application/pdf",
             type="primary",
             use_container_width=True
         )
 
-        # App Header
-        st.title("Data Analyzer AI")
-        st.caption("Enterprise Visual Analytics & Machine Learning Engine (Matplotlib / Seaborn)")
-        st.info(f"Detected Domain: **{domain_info.get('domain', 'General')}** | Confidence: **{domain_info.get('confidence', 'Low')}**")
+        # Header Title Area
+        st.markdown(f"<div class='main-header'>Data Analyzer AI Platform</div>", unsafe_allow_html=True)
+        st.caption(f"Domain Identified: **{domain_info.get('domain', 'General')}** | Confidence: **{domain_info.get('confidence', 'Medium')}**")
 
-        # Main Navigation Tabs
+        # Global Interactive Filtering Engine
+        with st.expander("🔍 Interactive Data Filtering Engine", expanded=False):
+            filter_cols = st.multiselect("Select attributes to filter dataset:", cat_cols)
+            filtered_df = df.copy()
+            if filter_cols:
+                for fc in filter_cols:
+                    selected_vals = st.multiselect(f"Filter values for {fc}:", df[fc].unique(), default=df[fc].unique())
+                    filtered_df = filtered_df[filtered_df[fc].isin(selected_vals)]
+                st.info(f"Showing **{len(filtered_df):,}** of **{len(df):,}** records matching active filters.")
+            else:
+                filtered_df = df
+
+        # Application Navigation Tabs
         tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
             "📋 Overview",
-            "📊 Dashboard Analytics",
-            "🔍 Data Quality",
-            "📈 Statistics",
+            "📊 Interactive Dashboards",
+            "🔍 Data Quality Audit",
+            "📈 Statistical Profiling",
             "❓ Analytical Questions",
-            "🤖 Risk & Feature Importance",
-            "💡 Recommendations"
+            "🤖 ML Driver Engine",
+            "💡 Executive Recommendations"
         ])
 
         # TAB 1: OVERVIEW
         with tab1:
-            st.subheader("Dataset Structure & High-Level Metrics")
+            st.subheader("Dataset Structure & Metric Breakdown")
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Loaded Records", f"{quality_info.get('total_rows', len(df)):,}")
-            c2.metric("Total Variables", f"{quality_info.get('total_cols', len(df.columns)):,}")
-            c3.metric("Numeric Metrics", len(num_cols))
-            c4.metric("Categorical Dimensions", len(cat_cols))
+            c1.metric("Total Records Analyzed", f"{len(filtered_df):,}")
+            c2.metric("Total Attributes", len(filtered_df.columns))
+            c3.metric("Numerical Attributes", len(num_cols))
+            c4.metric("Categorical Attributes", len(cat_cols))
 
             st.markdown("---")
-            st.subheader("Dataset First 10 Rows")
-            st.dataframe(df.head(10), use_container_width=True)
+            st.subheader("Dataset Preview (Top Rows)")
+            st.dataframe(filtered_df.head(15), use_container_width=True)
 
-        # TAB 2: DASHBOARD ANALYTICS
+        # TAB 2: INTERACTIVE DASHBOARDS (PLOTLY)
         with tab2:
-            st.subheader("Interactive Visual Analytics Dashboards")
-            
-            date_cols = df.select_dtypes(include=['datetime64', 'datetime']).columns.tolist()
+            st.subheader("Interactive Plotly Visual Dashboards")
 
-            db_tab1, db_tab2, db_tab3, db_tab4 = st.tabs([
-                "Dashboard 1: Categorical Breakdown",
-                "Dashboard 2: Metric Relationships",
-                "Dashboard 3: Distribution & Trends",
-                "Dashboard 4: Interactive Query Engine"
+            db1, db2, db3, db4 = st.tabs([
+                "Categorical Aggregations",
+                "Cross-Metric Correlations",
+                "Distribution & Boxplots",
+                "Interactive Query Builder"
             ])
 
-            # DASHBOARD 1
-            with db_tab1:
-                st.markdown("#### Dashboard 1: Categorical & Dimension Breakdown")
+            # Dashboard 1
+            with db1:
+                st.markdown("#### Categorical & Dimension Aggregation")
                 if cat_cols and num_cols:
-                    col_a, col_b = st.columns(2)
-                    c_dim = col_a.selectbox("Categorical Dimension:", cat_cols, index=0, key="db1_cat")
-                    m_metric = col_b.selectbox("Numerical Metric:", num_cols, index=0, key="db1_num")
+                    ca1, ca2 = st.columns(2)
+                    sel_cat = ca1.selectbox("Categorical Dimension:", cat_cols, key="p_cat")
+                    sel_num = ca2.selectbox("Numerical Metric:", num_cols, key="p_num")
 
-                    fig, axs = plt.subplots(2, 2, figsize=(12, 8))
-                    fig.subplots_adjust(hspace=0.4, wspace=0.3)
+                    f1, f2 = st.columns(2)
+                    
+                    # Chart 1: Bar Aggregation
+                    agg_df = filtered_df.groupby(sel_cat)[sel_num].sum().reset_index().sort_values(by=sel_num, ascending=False).head(10)
+                    fig_bar = px.bar(agg_df, x=sel_cat, y=sel_num, title=f"Total {sel_num} by {sel_cat}", color=sel_num, color_continuous_scale="Blues")
+                    f1.plotly_chart(fig_bar, use_container_width=True)
 
-                    agg_sum = df.groupby(c_dim)[m_metric].sum().nlargest(8)
-                    sns.barplot(x=agg_sum.index, y=agg_sum.values, ax=axs[0,0], palette=cmap_choice)
-                    axs[0,0].set_title(f"1. Total {m_metric} by {c_dim}", fontweight='bold')
-                    axs[0,0].tick_params(axis='x', rotation=30)
-
-                    pie_data = df[c_dim].value_counts().head(5)
-                    axs[0,1].pie(pie_data, labels=pie_data.index, autopct='%1.1f%%', startangle=140, colors=sns.color_palette(cmap_choice, len(pie_data)))
-                    axs[0,1].set_title(f"2. {c_dim} Frequency Share", fontweight='bold')
-
-                    agg_avg = df.groupby(c_dim)[m_metric].mean().nlargest(8).sort_values()
-                    sns.barplot(x=agg_avg.values, y=agg_avg.index, ax=axs[1,0], palette=cmap_choice)
-                    axs[1,0].set_title(f"3. Avg {m_metric} by {c_dim}", fontweight='bold')
-
-                    agg_cnt = df[c_dim].value_counts().head(8)
-                    sns.barplot(x=agg_cnt.index, y=agg_cnt.values, ax=axs[1,1], palette="Blues_r")
-                    axs[1,1].set_title(f"4. Record Count per {c_dim}", fontweight='bold')
-                    axs[1,1].tick_params(axis='x', rotation=30)
-
-                    st.pyplot(fig)
-                    plt.close(fig)
+                    # Chart 2: Donut Distribution
+                    pie_df = filtered_df[sel_cat].value_counts().head(6).reset_index()
+                    pie_df.columns = [sel_cat, "Count"]
+                    fig_pie = px.pie(pie_df, names=sel_cat, values="Count", title=f"Top {sel_cat} Share Proportion", hole=0.4)
+                    f2.plotly_chart(fig_pie, use_container_width=True)
                 else:
-                    st.warning("Dashboard 1 requires categorical and numerical fields to populate.")
+                    st.warning("Categorical and Numerical attributes are required to render Dashboard 1.")
 
-            # DASHBOARD 2
-            with db_tab2:
-                st.markdown("#### Dashboard 2: Cross-Metric Relationship Analysis")
+            # Dashboard 2
+            with db2:
+                st.markdown("#### Cross-Metric Relationship & Correlation Analysis")
                 if len(num_cols) >= 2:
-                    col_a, col_b = st.columns(2)
-                    x_met = col_a.selectbox("X-Axis Metric:", num_cols, index=0, key="db2_x")
-                    y_met = col_b.selectbox("Y-Axis Metric:", num_cols, index=1 if len(num_cols) > 1 else 0, key="db2_y")
+                    cb1, cb2 = st.columns(2)
+                    x_val = cb1.selectbox("X-Axis Metric:", num_cols, index=0, key="px_x")
+                    y_val = cb2.selectbox("Y-Axis Metric:", num_cols, index=1 if len(num_cols) > 1 else 0, key="px_y")
 
-                    fig, axs = plt.subplots(2, 2, figsize=(12, 8))
-                    fig.subplots_adjust(hspace=0.4, wspace=0.3)
+                    f1, f2 = st.columns(2)
 
-                    sns.regplot(data=df, x=x_met, y=y_met, ax=axs[0,0], scatter_kws={'alpha':0.5}, line_kws={'color':'red'})
-                    axs[0,0].set_title(f"1. Scatter ({x_met} vs {y_met})", fontweight='bold')
+                    # Scatter Plot with Trendline
+                    fig_scatter = px.scatter(filtered_df, x=x_val, y=y_val, trendline="ols", title=f"Scatter Trend: {x_val} vs {y_val}", opacity=0.7)
+                    f1.plotly_chart(fig_scatter, use_container_width=True)
 
-                    sns.kdeplot(data=df, x=x_met, y=y_met, ax=axs[0,1], cmap=cmap_choice, fill=True)
-                    axs[0,1].set_title(f"2. Density Kernel ({x_met} vs {y_met})", fontweight='bold')
-
-                    df_sorted = df.sort_values(by=x_met).head(150)
-                    axs[1,0].plot(df_sorted[x_met].values, df_sorted[y_met].values, color='#2563EB', linewidth=1.5)
-                    axs[1,0].set_title(f"3. Profile Trajectory ({x_met} vs {y_met})", fontweight='bold')
-                    axs[1,0].set_xlabel(x_met)
-                    axs[1,0].set_ylabel(y_met)
-
-                    corr_cols = num_cols[:6]
-                    corr_matrix = df[corr_cols].corr()
-                    sns.heatmap(corr_matrix, annot=True, fmt=".2f", cmap="Blues", ax=axs[1,1], cbar=False)
-                    axs[1,1].set_title("4. Multi-Metric Correlation", fontweight='bold')
-
-                    st.pyplot(fig)
-                    plt.close(fig)
+                    # Correlation Heatmap
+                    corr_data = filtered_df[num_cols[:8]].corr()
+                    fig_heat = px.imshow(corr_data, text_auto=True, color_continuous_scale="RdBu_r", title="Metric Correlation Matrix")
+                    f2.plotly_chart(fig_heat, use_container_width=True)
                 else:
-                    st.warning("Dashboard 2 requires at least two numerical metrics.")
+                    st.warning("At least two numerical metrics are required for cross-metric analytics.")
 
-            # DASHBOARD 3
-            with db_tab3:
-                st.markdown("#### Dashboard 3: Statistical Distributions & Time Trends")
+            # Dashboard 3
+            with db3:
+                st.markdown("#### Distribution Spread & Outlier Analysis")
                 if num_cols:
-                    col_a, col_b = st.columns(2)
-                    dist_col = col_a.selectbox("Metric for Distribution:", num_cols, index=0, key="db3_dist")
-                    group_cat = col_b.selectbox("Category Dimension Split:", [None] + cat_cols, index=0, key="db3_split")
+                    cd1, cd2 = st.columns(2)
+                    dist_m = cd1.selectbox("Select Metric:", num_cols, key="px_dist")
+                    group_c = cd2.selectbox("Optional Categorical Split:", [None] + cat_cols, key="px_split")
 
-                    fig, axs = plt.subplots(2, 2, figsize=(12, 8))
-                    fig.subplots_adjust(hspace=0.4, wspace=0.3)
+                    f1, f2 = st.columns(2)
 
-                    sns.boxplot(data=df, x=group_cat, y=dist_col, ax=axs[0,0], palette=cmap_choice if group_cat else None)
-                    axs[0,0].set_title(f"1. Boxplot Spread for '{dist_col}'", fontweight='bold')
-                    if group_cat:
-                        axs[0,0].tick_params(axis='x', rotation=30)
+                    # Histogram
+                    fig_hist = px.histogram(filtered_df, x=dist_m, color=group_c, marginal="rug", title=f"Histogram of {dist_m}")
+                    f1.plotly_chart(fig_hist, use_container_width=True)
 
-                    sns.violinplot(data=df, x=group_cat, y=dist_col, ax=axs[0,1], palette=cmap_choice if group_cat else None)
-                    axs[0,1].set_title(f"2. Violin Density for '{dist_col}'", fontweight='bold')
-                    if group_cat:
-                        axs[0,1].tick_params(axis='x', rotation=30)
+                    # Boxplot
+                    fig_box = px.box(filtered_df, x=group_c, y=dist_m, color=group_c, title=f"Boxplot Spread of {dist_m}")
+                    f2.plotly_chart(fig_box, use_container_width=True)
 
-                    sns.histplot(data=df, x=dist_col, hue=group_cat, kde=True, ax=axs[1,0], palette="Set2" if group_cat else None)
-                    axs[1,0].set_title(f"3. Histogram & KDE of '{dist_col}'", fontweight='bold')
+            # Dashboard 4
+            with db4:
+                st.markdown("#### Custom Interactive Query Dashboard")
+                q_col1, q_col2, q_col3 = st.columns(3)
+                q_x = q_col1.selectbox("Select X Attribute:", filtered_df.columns, index=0)
+                q_y = q_col2.selectbox("Select Y Attribute:", num_cols, index=0 if num_cols else 0)
+                chart_type = q_col3.selectbox("Select Plot Type:", ["Bar Chart", "Line Chart", "Scatter Plot", "Box Plot"])
 
-                    if date_cols:
-                        dt_col = date_cols[0]
-                        trend_df = df.groupby(dt_col)[dist_col].mean().reset_index()
-                        axs[1,1].plot(trend_df[dt_col], trend_df[dist_col], color='#1D4ED8', marker='o', markersize=3)
-                        axs[1,1].set_title(f"4. Average '{dist_col}' Timeline", fontweight='bold')
-                        axs[1,1].tick_params(axis='x', rotation=30)
-                    else:
-                        sns.ecdfplot(data=df, x=dist_col, hue=group_cat, ax=axs[1,1])
-                        axs[1,1].set_title(f"4. ECDF Cumulative Spread for '{dist_col}'", fontweight='bold')
-
-                    st.pyplot(fig)
-                    plt.close(fig)
+                if chart_type == "Bar Chart":
+                    fig_q = px.bar(filtered_df.head(100), x=q_x, y=q_y, color=q_x if q_x in cat_cols else None)
+                elif chart_type == "Line Chart":
+                    fig_q = px.line(filtered_df.head(100), x=q_x, y=q_y)
+                elif chart_type == "Scatter Plot":
+                    fig_q = px.scatter(filtered_df.head(100), x=q_x, y=q_y)
                 else:
-                    st.warning("Dashboard 3 requires numerical fields.")
+                    fig_q = px.box(filtered_df.head(100), x=q_x, y=q_y)
 
-            # DASHBOARD 4
-            with db_tab4:
-                st.markdown("#### Dashboard 4: Interactive Natural Language Query Engine")
-                
-                if "query_input" not in st.session_state:
-                    st.session_state["query_input"] = ""
+                st.plotly_chart(fig_q, use_container_width=True)
 
-                suggested_q = [q.get('question', '') for q in questions if q.get('question')]
-                if suggested_q:
-                    selected_q = st.selectbox("Select a recommended analytical question:", ["-- Select or type below --"] + suggested_q)
-                    if selected_q != "-- Select or type below --":
-                        st.session_state["query_input"] = selected_q
-
-                custom_q = st.text_input("Query / Hypothesis Input:", value=st.session_state["query_input"])
-
-                if st.button("🔎 Render Dashboard 4", type="primary"):
-                    if custom_q.strip():
-                        matched_num = [c for c in num_cols if c.lower() in custom_q.lower()]
-                        matched_cat = [c for c in cat_cols if c.lower() in custom_q.lower()]
-
-                        m_col = matched_num[0] if matched_num else num_cols[0]
-                        c_col = matched_cat[0] if matched_cat else (cat_cols[0] if cat_cols else None)
-
-                        fig, axs = plt.subplots(2, 2, figsize=(12, 8))
-                        fig.subplots_adjust(hspace=0.4, wspace=0.3)
-
-                        if c_col:
-                            res1 = df.groupby(c_col)[m_col].sum().nlargest(8)
-                            sns.barplot(x=res1.index, y=res1.values, ax=axs[0,0], palette="Blues_r")
-                            axs[0,0].set_title(f"1. Total {m_col} by {c_col}", fontweight='bold')
-                            axs[0,0].tick_params(axis='x', rotation=30)
-
-                            res2 = df.groupby(c_col)[m_col].mean().nlargest(8)
-                            sns.barplot(x=res2.index, y=res2.values, ax=axs[0,1], palette="Blues")
-                            axs[0,1].set_title(f"2. Mean {m_col} by {c_col}", fontweight='bold')
-                            axs[0,1].tick_params(axis='x', rotation=30)
-
-                            res3 = df[c_col].value_counts().head(8)
-                            axs[1,0].pie(res3, labels=res3.index, autopct='%1.1f%%')
-                            axs[1,0].set_title(f"3. {c_col} Share Proportion", fontweight='bold')
-                        else:
-                            sns.histplot(df[m_col], ax=axs[0,0], kde=True)
-                            axs[0,0].set_title(f"1. Histogram: {m_col}", fontweight='bold')
-
-                            sns.boxplot(y=df[m_col], ax=axs[0,1])
-                            axs[0,1].set_title(f"2. Boxplot: {m_col}", fontweight='bold')
-
-                            axs[1,0].plot(df.index, df[m_col], alpha=0.6)
-                            axs[1,0].set_title(f"3. Sequential Trend of {m_col}", fontweight='bold')
-
-                        if len(num_cols) >= 2:
-                            second_m = num_cols[1] if num_cols[1] != m_col else num_cols[0]
-                            sns.scatterplot(data=df, x=m_col, y=second_m, ax=axs[1,1])
-                            axs[1,1].set_title(f"4. Correlation ({m_col} vs {second_m})", fontweight='bold')
-                        else:
-                            sns.ecdfplot(data=df, x=m_col, ax=axs[1,1])
-                            axs[1,1].set_title(f"4. ECDF Distribution of {m_col}", fontweight='bold')
-
-                        st.pyplot(fig)
-                        plt.close(fig)
-
-        # TAB 3: DATA QUALITY
+        # TAB 3: DATA QUALITY AUDIT
         with tab3:
             st.subheader("Data Quality & Integrity Audit")
+            
             if quality_info.get("is_perfect_quality", False):
-                st.success("✅ Dataset is fully clean. Zero null values or duplicated rows detected.")
+                st.success("✅ Dataset is fully optimized. Zero missing values or duplicates detected.")
             else:
-                st.warning("⚠️ Data Quality Notice: Null entries or duplicate rows were identified.")
+                st.warning("⚠️ Data Quality Issues Identified.")
 
-            col_q1, col_q2 = st.columns(2)
-            with col_q1:
-                st.write("**Missing Entries Summary**")
-                missing = quality_info.get("cols_with_missing", {})
-                if missing:
-                    st.dataframe(pd.DataFrame(list(missing.items()), columns=["Column", "Missing Count"]), use_container_width=True)
+            dq1, dq2 = st.columns(2)
+            with dq1:
+                st.write("**Missing Values Inventory**")
+                missing_cols = quality_info.get("cols_with_missing", {})
+                if missing_cols:
+                    m_df = pd.DataFrame(list(missing_cols.items()), columns=["Attribute", "Missing Count"])
+                    st.dataframe(m_df, use_container_width=True)
                 else:
-                    st.info("Zero missing values found across all dataset attributes.")
+                    st.info("Zero missing entries across dataset attributes.")
 
-            with col_q2:
-                st.write("**Data Integrity Breakdown**")
-                st.write(f"- Duplicate Records Count: **{quality_info.get('duplicate_rows', 0):,}**")
+            with dq2:
+                st.write("**Integrity Metrics Summary**")
+                st.write(f"- Duplicate Records: **{quality_info.get('duplicate_rows', 0):,}**")
                 st.write(f"- Completely Empty Columns: **{len(quality_info.get('empty_cols', []))}**")
-                st.write(f"- Attributes with Statistical Outliers: **{len(quality_info.get('outliers', {}))}**")
 
-        # TAB 4: STATISTICS
+        # TAB 4: STATISTICAL PROFILING
         with tab4:
             st.subheader("Statistical Profiling Summary")
-            num_df = df[num_cols] if num_cols else pd.DataFrame()
-            if not num_df.empty:
-                st.write("**Numerical Attribute Summary**")
-                st.dataframe(num_df.describe().T, use_container_width=True)
+            if num_cols:
+                st.write("**Numerical Summary Statistics**")
+                st.dataframe(filtered_df[num_cols].describe().T, use_container_width=True)
 
-            cat_df = df[cat_cols] if cat_cols else pd.DataFrame()
-            if not cat_df.empty:
-                st.write("**Categorical Dimension Summary**")
-                st.dataframe(cat_df.describe().T, use_container_width=True)
+            if cat_cols:
+                st.write("**Categorical Summary Statistics**")
+                st.dataframe(filtered_df[cat_cols].describe().T, use_container_width=True)
 
         # TAB 5: ANALYTICAL QUESTIONS
         with tab5:
-            st.subheader("Domain-Specific Hypotheses & Analytical Questions")
-            if questions:
-                for q in questions:
-                    with st.expander(f"📌 {q.get('category', 'Analysis')}: {q.get('question', '')}"):
-                        st.write(f"**Analytical Purpose:** {q.get('purpose', '')}")
-            else:
-                st.info("No domain analytical questions generated for this dataset.")
+            st.subheader("Generated Domain Analytical Questions")
+            for q in questions:
+                with st.expander(f"📌 {q.get('category', 'Analysis')}: {q.get('question', '')}"):
+                    st.write(f"**Analytical Purpose:** {q.get('purpose', '')}")
 
-        # TAB 6: RISK & FEATURE IMPORTANCE
+        # TAB 6: MACHINE LEARNING ENGINE
         with tab6:
-            st.subheader(f"Machine Learning Driver Model: Field Target '{target_field}'")
-            st.write("Train an ensemble Random Forest model to isolate key metric influence drivers.")
-            
-            if st.button("🚀 Train & Evaluate Driver Model", type="primary"):
-                with st.spinner("Executing Random Forest cross-validation model..."):
-                    try:
-                        model, encoders, importances, feature_names, score_label, score_val = train_risk_model(df, target_field)
-                        st.success(f"Model trained successfully! **{score_label}: {score_val:.4f}**")
-                        
-                        m_col1, m_col2 = st.columns([2, 1])
-                        with m_col1:
-                            fig, ax = plt.subplots(figsize=(8, 5))
-                            sns.barplot(data=importances, x='Importance', y='Feature', palette="viridis", ax=ax)
-                            ax.set_title(f"Feature Importance Rankings for '{target_field}'", fontweight='bold')
-                            st.pyplot(fig)
-                            plt.close(fig)
-                            
-                        with m_col2:
-                            st.write("**Feature Importance Data**")
-                            st.dataframe(importances, use_container_width=True)
-                            
-                    except Exception as e:
-                        st.error(f"Error training model: {e}")
+            st.subheader(f"Machine Learning Driver Analysis: Target '{target_field}'")
+            st.write("Train a cross-validated Random Forest model to identify primary variable drivers.")
 
-        # TAB 7: RECOMMENDATIONS
+            if st.button("🚀 Execute Machine Learning Driver Pipeline", type="primary"):
+                with st.spinner("Training model and calculating feature importances..."):
+                    try:
+                        model, encoders, importances, metrics = train_risk_model(filtered_df, target_field)
+                        st.success("Model Training Complete!")
+
+                        st.write("**Model Performance Evaluation Metrics:**")
+                        m_cols = st.columns(len(metrics))
+                        for idx, (m_name, m_val) in enumerate(metrics.items()):
+                            if isinstance(m_val, float):
+                                m_cols[idx].metric(m_name, f"{m_val:.4f}")
+                            else:
+                                m_cols[idx].metric(m_name, str(m_val))
+
+                        st.markdown("---")
+                        ml_c1, ml_c2 = st.columns([2, 1])
+                        with ml_c1:
+                            fig_imp = px.bar(
+                                importances.head(10), x='Importance', y='Feature', orientation='h',
+                                title=f"Top Feature Importance Scores for '{target_field}'",
+                                color='Importance', color_continuous_scale='Viridis'
+                            )
+                            fig_imp.update_layout(yaxis=dict(autorange="reversed"))
+                            st.plotly_chart(fig_imp, use_container_width=True)
+                        with ml_c2:
+                            st.write("**Importance Table**")
+                            st.dataframe(importances, use_container_width=True)
+                    except Exception as err:
+                        st.error(f"Machine learning engine execution failed: {err}")
+
+        # TAB 7: EXECUTIVE RECOMMENDATIONS
         with tab7:
-            st.subheader("Executive Analyst Recommendations")
-            if recommendations:
-                for rec in recommendations:
-                    st.markdown(f"""
-                    <div class="rec-box">
-                        <div class="rec-title">📍 Focus Domain: {rec.get('business_area', 'General Strategy')}</div>
-                        <p><span class="field-label">Action Plan:</span> {rec.get('action_development', 'N/A')}</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-            else:
-                st.info("No automated recommendations generated for this dataset profile.")
+            st.subheader("Strategic Recommendations")
+            for rec in recommendations:
+                st.markdown(f"""
+                <div class="rec-card">
+                    <div class="rec-card-title">Focus Focus Domain: {rec.get('business_area', 'General Strategy')}</div>
+                    <p class="rec-card-body"><b>Action Plan:</b> {rec.get('action_development', 'N/A')}</p>
+                </div>
+                """, unsafe_allow_html=True)
 
 else:
-    st.info("👆 Upload a CSV or Excel dataset from the sidebar menu to launch the analytics platform.")
+    st.info("👆 Upload a CSV or Excel dataset in the sidebar menu to launch the platform.")
