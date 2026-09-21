@@ -1,7 +1,7 @@
 """
 app.py - Data Analyzer AI Platform
 Interactive Streamlit application for data analysis, visual exploration, machine learning, and decision support.
-Optimized for high-performance cloud deployment with visual dashboard chart PDF exports.
+Optimized for high-performance cloud deployment with native PDF chart export.
 """
 
 import io
@@ -9,16 +9,21 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-import plotly.graph_objects as go
-from sklearn.preprocessing import LabelEncoder
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from sklearn.utils.multiclass import type_of_target
 
 # ReportLab Imports for Direct PDF Generation
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+
+# Matplotlib for Server-Side Memory-Safe PDF Chart Rendering
+import matplotlib
+matplotlib.use('Agg')  # Non-interactive backend for cloud execution
+import matplotlib.pyplot as plt
+
+from sklearn.preprocessing import LabelEncoder
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.utils.multiclass import type_of_target
 
 # Import custom modules with safety guards
 try:
@@ -179,28 +184,28 @@ def train_risk_model(df, target_col):
     return model, encoders, importances, X.columns.tolist()
 
 
-# Helper Function: Native PDF Generator with Embedded Dashboard Charts
-def generate_native_pdf_report(df, domain_info, quality_info, recommendations, palette):
+# Helper Function: Native PDF Generator with Embedded Dashboard Chart Images
+def generate_native_pdf_report(df, domain_info, quality_info, recommendations):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
     story = []
     styles = getSampleStyleSheet()
 
-    # Custom Paragraph Styles
+    # Paragraph Styles
     title_style = ParagraphStyle('ReportTitle', parent=styles['Heading1'], fontSize=20, leading=24, textColor=colors.HexColor('#1E3A8A'))
-    h2_style = ParagraphStyle('SectionHeading', parent=styles['Heading2'], fontSize=14, leading=18, textColor=colors.HexColor('#1E40AF'), spaceBefore=12, spaceAfter=6)
-    body_style = ParagraphStyle('ReportBody', parent=styles['Normal'], fontSize=10, leading=14, textColor=colors.HexColor('#334155'))
+    h2_style = ParagraphStyle('SectionHeading', parent=styles['Heading2'], fontSize=13, leading=16, textColor=colors.HexColor('#1E40AF'), spaceBefore=12, spaceAfter=6)
+    body_style = ParagraphStyle('ReportBody', parent=styles['Normal'], fontSize=9, leading=13, textColor=colors.HexColor('#334155'))
     bold_style = ParagraphStyle('ReportBold', parent=body_style, fontName='Helvetica-Bold')
 
-    # Title & Subtitle
-    story.append(Paragraph("Data Analyzer AI — Executive Dashboard & Analysis Report", title_style))
-    story.append(Spacer(1, 8))
+    # Header Title
+    story.append(Paragraph("Data Analyzer AI — Complete Executive Report", title_style))
+    story.append(Spacer(1, 6))
     domain_text = f"<b>Detected Domain:</b> {domain_info.get('domain', 'General')} (Confidence: {domain_info.get('confidence', 'Low')})"
     story.append(Paragraph(domain_text, body_style))
-    story.append(Spacer(1, 14))
+    story.append(Spacer(1, 10))
 
-    # Section 1: Overview & Metrics Table
-    story.append(Paragraph("1. Overview & Key Metrics", h2_style))
+    # 1. Overview Table
+    story.append(Paragraph("1. Executive Overview & Key Metrics", h2_style))
     overview_data = [
         ["Total Records", "Total Columns", "Duplicate Rows", "Missing Values"],
         [
@@ -217,42 +222,62 @@ def generate_native_pdf_report(df, domain_info, quality_info, recommendations, p
         ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
         ('ALIGN', (0,0), (-1,-1), 'CENTER'),
         ('GRID', (0,0), (-1,-1), 1, colors.HexColor('#CBD5E1')),
-        ('PADDING', (0,0), (-1,-1), 8),
+        ('PADDING', (0,0), (-1,-1), 6),
     ]))
     story.append(t_overview)
-    story.append(Spacer(1, 14))
+    story.append(Spacer(1, 10))
 
-    # Section 2: Visual Dashboard Section (Embedded Plotly Charts)
-    story.append(Paragraph("2. Visual Analytics Dashboard", h2_style))
+    # 2. Visual Analytics Dashboard Section (Matplotlib Image Generation)
+    story.append(Paragraph("2. Visual Dashboard Analytics", h2_style))
+
     num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
     cat_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
     valid_cat_cols = [c for c in cat_cols if not c.lower().endswith('id') and df[c].nunique() <= 50]
 
     try:
-        # Chart 1: Bar Breakdown Chart
+        # Generate Chart 1: Bar Chart (Top Categories)
         if valid_cat_cols and num_cols:
-            cat_field = valid_cat_cols[0]
-            num_field = num_cols[0]
-            top_agg = df.groupby(cat_field)[num_field].sum().sort_values(ascending=False).head(10).reset_index()
-            fig1 = px.bar(top_agg, x=cat_field, y=num_field, color=num_field, color_continuous_scale=palette.lower(),
-                          title=f"Top 10 {cat_field} by {num_field}")
-            img_bytes1 = fig1.to_image(format="png", width=500, height=260)
-            story.append(Image(io.BytesIO(img_bytes1), width=500, height=260))
-            story.append(Spacer(1, 10))
+            cat_f = valid_cat_cols[0]
+            num_f = num_cols[0]
+            agg_df = df.groupby(cat_f)[num_f].sum().sort_values(ascending=False).head(8)
 
-        # Chart 2: Scatter Plot Relationship Chart
+            fig, ax = plt.subplots(figsize=(7, 3))
+            agg_df.plot(kind='bar', ax=ax, color='#2563EB', edgecolor='#1E3A8A')
+            ax.set_title(f"Top {cat_f} by Total {num_f}", fontsize=11, fontweight='bold', color='#1E3A8A')
+            ax.set_xlabel(cat_f, fontsize=9)
+            ax.set_ylabel(num_f, fontsize=9)
+            plt.xticks(rotation=30, ha='right', fontsize=8)
+            plt.tight_layout()
+
+            img_buf1 = io.BytesIO()
+            plt.savefig(img_buf1, format='png', dpi=150)
+            plt.close(fig)
+            img_buf1.seek(0)
+            story.append(Image(img_buf1, width=480, height=200))
+            story.append(Spacer(1, 8))
+
+        # Generate Chart 2: Scatter Plot Relationship
         if len(num_cols) >= 2:
-            fig2 = px.scatter(df, x=num_cols[0], y=num_cols[1], title=f"Relationship: {num_cols[0]} vs {num_cols[1]}")
-            img_bytes2 = fig2.to_image(format="png", width=500, height=260)
-            story.append(Image(io.BytesIO(img_bytes2), width=500, height=260))
-            story.append(Spacer(1, 10))
+            fig, ax = plt.subplots(figsize=(7, 3))
+            ax.scatter(df[num_cols[0]], df[num_cols[1]], alpha=0.6, color='#0284C7', edgecolors='none', s=20)
+            ax.set_title(f"Relationship: {num_cols[0]} vs {num_cols[1]}", fontsize=11, fontweight='bold', color='#1E3A8A')
+            ax.set_xlabel(num_cols[0], fontsize=9)
+            ax.set_ylabel(num_cols[1], fontsize=9)
+            plt.tight_layout()
 
-    except Exception:
-        story.append(Paragraph("<i>Note: Visual dashboard charts could not be embedded due to static image export constraints.</i>", body_style))
+            img_buf2 = io.BytesIO()
+            plt.savefig(img_buf2, format='png', dpi=150)
+            plt.close(fig)
+            img_buf2.seek(0)
+            story.append(Image(img_buf2, width=480, height=200))
+            story.append(Spacer(1, 8))
+
+    except Exception as err:
+        story.append(Paragraph(f"<i>Dashboard Chart Image Notice: {err}</i>", body_style))
 
     story.append(Spacer(1, 10))
 
-    # Section 3: Data Quality Analysis
+    # 3. Data Quality Analysis
     story.append(Paragraph("3. Data Quality Breakdown", h2_style))
     missing = quality_info.get("cols_with_missing", {})
     if missing:
@@ -267,15 +292,16 @@ def generate_native_pdf_report(df, domain_info, quality_info, recommendations, p
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#F1F5F9')),
         ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
         ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#CBD5E1')),
-        ('PADDING', (0,0), (-1,-1), 6),
+        ('PADDING', (0,0), (-1,-1), 5),
     ]))
     story.append(t_quality)
-    story.append(Spacer(1, 14))
+    story.append(Spacer(1, 10))
 
-    # Section 4: Statistical Analysis Summary
+    # 4. Statistical Summary
+    num_df = df.select_dtypes(include=[np.number])
     if not num_df.empty:
         story.append(Paragraph("4. Numerical Statistical Analysis", h2_style))
-        desc = num_df.describe().T.reset_index().head(10)
+        desc = num_df.describe().T.reset_index().head(8)
         stats_table_data = [["Column", "Mean", "Std Dev", "Min", "Median", "Max"]]
         for _, row in desc.iterrows():
             stats_table_data.append([
@@ -291,14 +317,14 @@ def generate_native_pdf_report(df, domain_info, quality_info, recommendations, p
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#F1F5F9')),
             ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
             ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#CBD5E1')),
-            ('PADDING', (0,0), (-1,-1), 5),
-            ('FONTSIZE', (0,0), (-1,-1), 9),
+            ('PADDING', (0,0), (-1,-1), 4),
+            ('FONTSIZE', (0,0), (-1,-1), 8),
         ]))
         story.append(t_stats)
-        story.append(Spacer(1, 14))
+        story.append(Spacer(1, 10))
 
-    # Section 5: Analyst Recommendations
-    story.append(Paragraph("5. Strategic Recommendations", h2_style))
+    # 5. Analyst Recommendations
+    story.append(Paragraph("5. Strategic Analyst Recommendations", h2_style))
     if recommendations:
         for idx, rec in enumerate(recommendations, 1):
             rec_title = f"<b>Recommendation {idx}: {rec.get('business_area', 'Strategy')}</b>"
@@ -308,7 +334,7 @@ def generate_native_pdf_report(df, domain_info, quality_info, recommendations, p
             story.append(Paragraph(f"• <b>Limitation:</b> {rec.get('limitation', 'N/A')}", body_style))
             story.append(Paragraph(f"• <b>Analyst Recommendation:</b> {rec.get('analyst_recommendation', 'N/A')}", body_style))
             story.append(Paragraph(f"• <b>Action Plan:</b> {rec.get('action_development', 'N/A')}", body_style))
-            story.append(Spacer(1, 8))
+            story.append(Spacer(1, 6))
     else:
         story.append(Paragraph("No explicit recommendations generated for this dataset structure.", body_style))
 
@@ -597,16 +623,15 @@ if uploaded_file is not None:
                     except Exception as e:
                         st.error(f"Could not build feature importance model: {e}")
 
-        # TAB 7: RECOMMENDATIONS & DIRECT PDF DOWNLOAD WITH CHARTS
+        # TAB 7: RECOMMENDATIONS & DIRECT PDF DOWNLOAD WITH DASHBOARD CHARTS
         with tab7:
             st.subheader("Evidence-Based Data Analyst Recommendations & Executive Export")
             
-            # Generate Direct Native PDF Bytes with Dashboard Charts
-            with st.spinner("Generating PDF report with dashboard visual charts..."):
-                pdf_bytes = generate_native_pdf_report(df, domain_info, quality_info, recommendations, palette)
+            # Generate Direct Native PDF Bytes with Dashboard Chart Images
+            pdf_bytes = generate_native_pdf_report(df, domain_info, quality_info, recommendations)
             
             st.download_button(
-                label="📄 Download Complete Executive Report with Dashboard Charts (PDF)",
+                label="📄 Download Complete Executive Report with Charts (PDF)",
                 data=pdf_bytes,
                 file_name="Data_Analyzer_AI_Executive_Report.pdf",
                 mime="application/pdf",
