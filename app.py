@@ -34,7 +34,6 @@ from reportlab.pdfgen import canvas
 # Machine Learning Engine
 from sklearn.preprocessing import LabelEncoder
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from sklearn.model_selection import cross_validate
 from sklearn.metrics import (
     r2_score, mean_squared_error, mean_absolute_error,
     accuracy_score, precision_score, recall_score, f1_score
@@ -96,7 +95,6 @@ st.set_page_config(
 # Enterprise Custom CSS
 st.markdown("""
 <style>
-    /* Theme Color Variables */
     :root {
         --primary-color: #2563EB;
         --background-color: #F8FAFC;
@@ -110,7 +108,6 @@ st.markdown("""
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
     
-    /* Executive Metric Cards */
     div[data-testid="stMetric"] {
         background-color: var(--card-background);
         padding: 20px;
@@ -124,7 +121,6 @@ st.markdown("""
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
     }
     
-    /* Recommendation Cards */
     .rec-card {
         background-color: var(--card-background);
         border: 1px solid var(--border-color);
@@ -146,7 +142,6 @@ st.markdown("""
         margin: 0;
     }
     
-    /* Header Enhancements */
     .main-header {
         font-size: 28px;
         font-weight: 800;
@@ -158,7 +153,6 @@ st.markdown("""
 
 
 # Column Profiling Helper
-@st.cache_data
 def get_analytical_columns(df):
     num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
     cat_cols = df.select_dtypes(include=['object', 'category', 'bool']).columns.tolist()
@@ -183,15 +177,13 @@ def get_analytical_columns(df):
 
 # Optimized Data Ingestion
 @st.cache_data(show_spinner=False)
-def load_data(uploaded_file, row_limit=10000):
+def load_data(uploaded_file_name, uploaded_file_bytes, row_limit=10000):
     try:
-        if uploaded_file.name.lower().endswith('.csv'):
-            df = pd.read_csv(uploaded_file)
+        file_buffer = io.BytesIO(uploaded_file_bytes)
+        if uploaded_file_name.lower().endswith('.csv'):
+            df = pd.read_csv(file_buffer)
         else:
-            try:
-                df = pd.read_excel(uploaded_file, sheet_name=0, engine='calamine')
-            except Exception:
-                df = pd.read_excel(uploaded_file, sheet_name=0, engine='openpyxl')
+            df = pd.read_excel(file_buffer, sheet_name=0)
             
         # Strip trailing whitespaces
         for col in df.select_dtypes(include=['object']).columns:
@@ -206,12 +198,6 @@ def load_data(uploaded_file, row_limit=10000):
                     except Exception:
                         pass
 
-        # Optimize numeric storage
-        for col in df.select_dtypes(include=['float64']).columns:
-            df[col] = df[col].astype('float32')
-        for col in df.select_dtypes(include=['int64']).columns:
-            df[col] = df[col].astype('int32')
-
         if len(df) > row_limit:
             df = df.sample(n=row_limit, random_state=42).reset_index(drop=True)
             
@@ -221,8 +207,7 @@ def load_data(uploaded_file, row_limit=10000):
         return None
 
 
-# Advanced Machine Learning Engine
-@st.cache_resource(show_spinner=False)
+# Machine Learning Engine
 def train_risk_model(df, target_col):
     data = df.copy().dropna()
     if data.empty:
@@ -466,14 +451,14 @@ row_limit = st.sidebar.slider("Maximum Sampling Rows:", min_value=1000, max_valu
 
 if uploaded_file is not None:
     with st.spinner("Loading and processing dataset..."):
-        df = load_data(uploaded_file, row_limit=row_limit)
+        file_bytes = uploaded_file.getvalue()
+        df = load_data(uploaded_file.name, file_bytes, row_limit=row_limit)
 
     if df is not None and not df.empty:
         num_cols, cat_cols, date_cols = get_analytical_columns(df)
         
         target_field = st.sidebar.selectbox("Target / Driver Field:", df.columns, index=0)
 
-        # Domain & Quality Auto-Engine
         domain_info = detect_domain(df)
         quality_info = analyze_data_quality(df)
         relationships = compute_relationships(df)
@@ -553,12 +538,10 @@ if uploaded_file is not None:
 
                     f1, f2 = st.columns(2)
                     
-                    # Chart 1: Bar Aggregation
                     agg_df = filtered_df.groupby(sel_cat)[sel_num].sum().reset_index().sort_values(by=sel_num, ascending=False).head(10)
                     fig_bar = px.bar(agg_df, x=sel_cat, y=sel_num, title=f"Total {sel_num} by {sel_cat}", color=sel_num, color_continuous_scale="Blues")
                     f1.plotly_chart(fig_bar, use_container_width=True)
 
-                    # Chart 2: Donut Distribution
                     pie_df = filtered_df[sel_cat].value_counts().head(6).reset_index()
                     pie_df.columns = [sel_cat, "Count"]
                     fig_pie = px.pie(pie_df, names=sel_cat, values="Count", title=f"Top {sel_cat} Share Proportion", hole=0.4)
@@ -576,11 +559,9 @@ if uploaded_file is not None:
 
                     f1, f2 = st.columns(2)
 
-                    # Scatter Plot with Trendline
                     fig_scatter = px.scatter(filtered_df, x=x_val, y=y_val, trendline="ols", title=f"Scatter Trend: {x_val} vs {y_val}", opacity=0.7)
                     f1.plotly_chart(fig_scatter, use_container_width=True)
 
-                    # Correlation Heatmap
                     corr_data = filtered_df[num_cols[:8]].corr()
                     fig_heat = px.imshow(corr_data, text_auto=True, color_continuous_scale="RdBu_r", title="Metric Correlation Matrix")
                     f2.plotly_chart(fig_heat, use_container_width=True)
@@ -597,11 +578,9 @@ if uploaded_file is not None:
 
                     f1, f2 = st.columns(2)
 
-                    # Histogram
                     fig_hist = px.histogram(filtered_df, x=dist_m, color=group_c, marginal="rug", title=f"Histogram of {dist_m}")
                     f1.plotly_chart(fig_hist, use_container_width=True)
 
-                    # Boxplot
                     fig_box = px.box(filtered_df, x=group_c, y=dist_m, color=group_c, title=f"Boxplot Spread of {dist_m}")
                     f2.plotly_chart(fig_box, use_container_width=True)
 
@@ -707,7 +686,7 @@ if uploaded_file is not None:
             for rec in recommendations:
                 st.markdown(f"""
                 <div class="rec-card">
-                    <div class="rec-card-title">Focus Focus Domain: {rec.get('business_area', 'General Strategy')}</div>
+                    <div class="rec-card-title">Focus Domain: {rec.get('business_area', 'General Strategy')}</div>
                     <p class="rec-card-body"><b>Action Plan:</b> {rec.get('action_development', 'N/A')}</p>
                 </div>
                 """, unsafe_allow_html=True)
