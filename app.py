@@ -173,8 +173,32 @@ def train_risk_model(df, target_col):
     return model, encoders, importances, X.columns.tolist()
 
 
-# Helper Function for Generating HTML Final Report
-def generate_html_report(df, domain_info, quality_info, recommendations):
+# Helper Function for Generating Complete PDF-Ready Dashboard Report
+def generate_full_dashboard_report(df, domain_info, quality_info, recommendations):
+    """Generates a complete, print-ready HTML dashboard report designed for PDF export."""
+    
+    # Generate Data Quality Table
+    missing = quality_info.get("cols_with_missing", {})
+    missing_rows = "".join([f"<tr><td>{col}</td><td>{cnt}</td></tr>" for col, cnt in missing.items()]) if missing else "<tr><td colspan='2'>No missing values detected</td></tr>"
+
+    # Generate Statistical Summary Table
+    num_df = df.select_dtypes(include=[np.number])
+    stats_html = ""
+    if not num_df.empty:
+        desc = num_df.describe().T.reset_index()
+        stats_rows = "".join([
+            f"<tr><td>{row['index']}</td><td>{row['mean']:.2f}</td><td>{row['std']:.2f}</td><td>{row['min']:.2f}</td><td>{row['50%']:.2f}</td><td>{row['max']:.2f}</td></tr>"
+            for _, row in desc.iterrows()
+        ])
+        stats_html = f"""
+        <h3>Numerical Statistics Summary</h3>
+        <table>
+            <thead><tr><th>Column</th><th>Mean</th><th>Std Dev</th><th>Min</th><th>Median</th><th>Max</th></tr></thead>
+            <tbody>{stats_rows}</tbody>
+        </table>
+        """
+
+    # Generate Recommendations Section
     rec_html = ""
     for idx, rec in enumerate(recommendations, 1):
         rec_html += f"""
@@ -192,30 +216,53 @@ def generate_html_report(df, domain_info, quality_info, recommendations):
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Data Analyzer AI - Executive Report</title>
+        <title>Data Analyzer AI - Complete Executive PDF Report</title>
         <style>
-            body {{ font-family: Arial, sans-serif; margin: 40px; color: #334155; line-height: 1.6; }}
-            h1 {{ color: #1E3A8A; border-bottom: 2px solid #2563EB; padding-bottom: 10px; }}
-            .metric-box {{ display: inline-block; width: 20%; background: #F1F5F9; padding: 15px; border-radius: 8px; margin-right: 2%; text-align: center; }}
+            @page {{ size: A4; margin: 20mm; }}
+            body {{ font-family: 'Helvetica Neue', Arial, sans-serif; color: #334155; line-height: 1.5; margin: 30px; }}
+            h1 {{ color: #1E3A8A; border-bottom: 3px solid #2563EB; padding-bottom: 8px; margin-bottom: 5px; }}
+            h2 {{ color: #1E40AF; border-bottom: 1px solid #E2E8F0; padding-bottom: 5px; margin-top: 25px; page-break-after: avoid; }}
+            h3 {{ color: #1E3A8A; margin-bottom: 5px; }}
+            .metric-card {{ display: inline-block; width: 22%; background: #F8FAFC; border: 1px solid #E2E8F0; padding: 12px; border-radius: 6px; text-align: center; margin-right: 1.5%; }}
             .metric-val {{ font-size: 20px; font-weight: bold; color: #2563EB; }}
+            table {{ width: 100%; border-collapse: collapse; margin-top: 10px; margin-bottom: 20px; font-size: 13px; }}
+            th, td {{ border: 1px solid #CBD5E1; padding: 8px; text-align: left; }}
+            th {{ background-color: #F1F5F9; color: #1E293B; }}
+            .print-btn {{
+                background-color: #2563EB; color: white; border: none; padding: 12px 24px; font-size: 16px; font-weight: bold;
+                border-radius: 6px; cursor: pointer; margin-bottom: 20px;
+            }}
+            @media print {{
+                .print-btn {{ display: none; }}
+            }}
         </style>
     </head>
     <body>
-        <h1>🧠 Data Analyzer AI - Final Analysis Report</h1>
-        <p><strong>Detected Industry / Domain:</strong> {domain_info.get('domain', 'General')} (Confidence: {domain_info.get('confidence', 'Low')})</p>
+        <button class="print-btn" onclick="window.print()">🖨️ Click Here to Save / Print as PDF</button>
         
-        <h2>Dataset Summary</h2>
-        <div class="metric-box">Total Records<br><span class="metric-val">{quality_info.get('total_rows', len(df)):,}</span></div>
-        <div class="metric-box">Total Columns<br><span class="metric-val">{quality_info.get('total_cols', len(df.columns)):,}</span></div>
-        <div class="metric-box">Duplicate Rows<br><span class="metric-val">{quality_info.get('duplicate_rows', 0)}</span></div>
-        <div class="metric-box">Missing Values<br><span class="metric-val">{quality_info.get('total_missing', 0)}</span></div>
+        <h1>🧠 Data Analyzer AI — Full Dashboard Report</h1>
+        <p><strong>Detected Domain:</strong> {domain_info.get('domain', 'General')} (Confidence: {domain_info.get('confidence', 'Low')})</p>
         
-        <br><br>
-        <h2>Strategic Recommendations</h2>
+        <h2>1. Overview & Key Metrics</h2>
+        <div class="metric-card">Total Records<br><span class="metric-val">{quality_info.get('total_rows', len(df)):,}</span></div>
+        <div class="metric-card">Total Columns<br><span class="metric-val">{quality_info.get('total_cols', len(df.columns)):,}</span></div>
+        <div class="metric-card">Duplicate Rows<br><span class="metric-val">{quality_info.get('duplicate_rows', 0)}</span></div>
+        <div class="metric-card">Missing Values<br><span class="metric-val">{quality_info.get('total_missing', 0)}</span></div>
+
+        <h2>2. Data Quality Analysis</h2>
+        <table>
+            <thead><tr><th>Column Name</th><th>Missing Count</th></tr></thead>
+            <tbody>{missing_rows}</tbody>
+        </table>
+
+        <h2>3. Statistical Analysis</h2>
+        {stats_html}
+
+        <h2>4. Strategic Recommendations</h2>
         {rec_html if rec_html else "<p>No explicit recommendations generated for this dataset.</p>"}
-        
+
         <hr>
-        <p style="font-size: 12px; color: #94A3B8;">Generated automatically by Data Analyzer AI Platform.</p>
+        <p style="font-size: 11px; color: #94A3B8; text-align: center;">Generated automatically by Data Analyzer AI Platform</p>
     </body>
     </html>
     """
@@ -501,21 +548,22 @@ if uploaded_file is not None:
                     except Exception as e:
                         st.error(f"Could not build feature importance model: {e}")
 
-        # TAB 7: RECOMMENDATIONS & FINAL REPORT DOWNLOAD
+        # TAB 7: RECOMMENDATIONS & FULL PDF REPORT DOWNLOAD
         with tab7:
-            st.subheader("Evidence-Based Data Analyst Recommendations")
+            st.subheader("Evidence-Based Data Analyst Recommendations & Full Report Export")
             
-            # Generate and render download button at top of Tab 7
-            report_html = generate_html_report(df, domain_info, quality_info, recommendations)
+            # Generate Full Report
+            report_html = generate_full_dashboard_report(df, domain_info, quality_info, recommendations)
             
             st.download_button(
-                label="📥 Download Final Executive Report (HTML)",
+                label="📄 Download Complete Full Dashboard Report (PDF Ready)",
                 data=report_html,
-                file_name="Data_Analyzer_AI_Executive_Report.html",
+                file_name="Data_Analyzer_AI_Full_Report.html",
                 mime="text/html",
                 type="primary"
             )
             
+            st.info("💡 **To Save as PDF:** Open the downloaded HTML file in your web browser and click the top **🖨️ Click Here to Save / Print as PDF** button, or press `Ctrl + P` (`Cmd + P` on Mac) and select **Save as PDF**.")
             st.markdown("---")
 
             if recommendations:
