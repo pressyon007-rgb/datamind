@@ -1,7 +1,7 @@
 """"
 app.py - Data Analyzer AI Platform
-Enterprise Streamlit application for automated data analysis, multi-dashboard visual exploration,
-machine learning driver modeling, and automated PDF executive reporting.
+Enterprise Streamlit application for automated data analysis, multi-dashboard visual analytics,
+machine learning driver modeling, and high-resolution PDF executive reporting.
 """
 
 import io
@@ -10,17 +10,18 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 
-# ReportLab Imports for Direct PDF Generation
+# ReportLab Imports for Direct High-Res PDF Generation
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, PageBreak
 
 # Safe Matplotlib Import for Cloud PDF Execution
 try:
     import matplotlib
     matplotlib.use('Agg')  # Non-interactive backend for cloud execution
     import matplotlib.pyplot as plt
+    import seaborn as sns
     HAS_MATPLOTLIB = True
 except ImportError:
     HAS_MATPLOTLIB = False
@@ -58,9 +59,9 @@ try:
 except ImportError:
     def generate_analytical_questions(df, domain_info):
         return [
-            {"category": "Performance", "question": "Which categories or operational dimensions yield the highest metrics?", "purpose": "Identify primary growth and revenue drivers."},
-            {"category": "Risk Analysis", "question": "Are extreme statistical anomalies present across continuous numerical fields?", "purpose": "Mitigate operational exposure and data variance."},
-            {"category": "Trends", "question": "What is the performance metric trajectory across temporal intervals?", "purpose": "Evaluate seasonal stability."}
+            {"category": "Performance", "question": "Which categories drive the highest metric totals?", "purpose": "Identify core operational drivers."},
+            {"category": "Risk", "question": "Are there extreme statistical anomalies in numerical metrics?", "purpose": "Mitigate operational risks."},
+            {"category": "Trend", "question": "What is the continuous metric trajectory over time?", "purpose": "Evaluate performance stability."}
         ]
 
 try:
@@ -70,7 +71,7 @@ except ImportError:
         return []
 
 
-# Page Setup
+# Streamlit Page Setup
 st.set_page_config(
     page_title="Data Analyzer AI",
     page_icon="🧠",
@@ -78,7 +79,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom UI Styling
+# Custom Styling
 st.markdown("""
     <style>
     .stApp {
@@ -106,7 +107,25 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# Data Loader & Downcaster
+# Column Cleaning Helper: Ignore Non-Analytical ID Columns
+def get_analytical_columns(df):
+    num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    cat_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
+    
+    # Filter out ID columns from numerical metrics
+    clean_num_cols = [c for c in num_cols if not (c.lower().endswith('id') or c.lower().startswith('id') or df[c].nunique() == len(df))]
+    if not clean_num_cols and num_cols:
+        clean_num_cols = num_cols  # Fallback if all numeric are IDs
+
+    # Filter out high-cardinality IDs from categorical metrics
+    clean_cat_cols = [c for c in cat_cols if not (c.lower().endswith('id') or c.lower().startswith('id')) and df[c].nunique() <= 50]
+    if not clean_cat_cols and cat_cols:
+        clean_cat_cols = cat_cols[:5]
+
+    return clean_num_cols, clean_cat_cols
+
+
+# Data Loader with Memory Optimization
 @st.cache_data
 def load_data(uploaded_file, row_limit=5000):
     try:
@@ -118,27 +137,26 @@ def load_data(uploaded_file, row_limit=5000):
             except Exception:
                 df = pd.read_excel(uploaded_file, sheet_name=0, engine='openpyxl')
             
-        # Memory optimization
         for col in df.select_dtypes(include=['float64']).columns:
             df[col] = df[col].astype('float32')
         for col in df.select_dtypes(include=['int64']).columns:
             df[col] = df[col].astype('int32')
 
         if len(df) > row_limit:
-            st.warning(f"⚠️ Dataset has {len(df):,} records. Sampled down to {row_limit:,} rows for cloud responsiveness.")
+            st.warning(f"⚠️ Dataset contains {len(df):,} records. Sampled down to {row_limit:,} rows for cloud responsiveness.")
             df = df.sample(n=row_limit, random_state=42).reset_index(drop=True)
             
         return df
     except Exception as e:
-        st.error(f"Error loading uploaded file: {e}")
+        st.error(f"Error loading file: {e}")
         return None
 
 
-# Random Forest Machine Learning Engine
+# Random Forest Driver Model
 def train_risk_model(df, target_col):
     data = df.copy().dropna()
     if data.empty:
-        raise ValueError("Dataset contains no complete rows after dropping missing values.")
+        raise ValueError("Dataset has no complete rows after dropping nulls.")
         
     encoders = {}
     
@@ -164,7 +182,7 @@ def train_risk_model(df, target_col):
     y = data[target_col]
     
     if X.empty or X.shape[1] == 0:
-        raise ValueError("Insufficient feature columns available for modeling.")
+        raise ValueError("Insufficient analytical features to train model.")
 
     target_type = type_of_target(y)
     
@@ -188,25 +206,25 @@ def train_risk_model(df, target_col):
     return model, encoders, importances, X.columns.tolist()
 
 
-# PDF Generator with Native Matplotlib Export
+# High-Resolution Native PDF Generator
 def generate_native_pdf_report(df, domain_info, quality_info, recommendations):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
     story = []
     styles = getSampleStyleSheet()
 
-    title_style = ParagraphStyle('ReportTitle', parent=styles['Heading1'], fontSize=18, leading=22, textColor=colors.HexColor('#1E3A8A'))
-    h2_style = ParagraphStyle('SectionHeading', parent=styles['Heading2'], fontSize=11, leading=14, textColor=colors.HexColor('#1E40AF'), spaceBefore=10, spaceAfter=4)
-    body_style = ParagraphStyle('ReportBody', parent=styles['Normal'], fontSize=8.5, leading=11, textColor=colors.HexColor('#334155'))
+    title_style = ParagraphStyle('ReportTitle', parent=styles['Heading1'], fontSize=20, leading=24, textColor=colors.HexColor('#1E3A8A'))
+    h2_style = ParagraphStyle('SectionHeading', parent=styles['Heading2'], fontSize=12, leading=15, textColor=colors.HexColor('#1E40AF'), spaceBefore=12, spaceAfter=6)
+    body_style = ParagraphStyle('ReportBody', parent=styles['Normal'], fontSize=9, leading=12, textColor=colors.HexColor('#334155'))
     bold_style = ParagraphStyle('ReportBold', parent=body_style, fontName='Helvetica-Bold')
 
-    story.append(Paragraph("Data Analyzer AI — Executive Report", title_style))
+    story.append(Paragraph("Data Analyzer AI — Executive Analytics Report", title_style))
     story.append(Spacer(1, 4))
     domain_text = f"<b>Detected Domain:</b> {domain_info.get('domain', 'General')} | <b>Confidence:</b> {domain_info.get('confidence', 'Low')}"
     story.append(Paragraph(domain_text, body_style))
     story.append(Spacer(1, 8))
 
-    # Overview Metrics Table
+    # Overview Table
     story.append(Paragraph("1. Dataset Overview Metrics", h2_style))
     overview_data = [
         ["Total Records", "Total Columns", "Duplicate Rows", "Missing Values"],
@@ -224,58 +242,85 @@ def generate_native_pdf_report(df, domain_info, quality_info, recommendations):
         ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
         ('ALIGN', (0,0), (-1,-1), 'CENTER'),
         ('GRID', (0,0), (-1,-1), 1, colors.HexColor('#CBD5E1')),
-        ('PADDING', (0,0), (-1,-1), 4),
+        ('PADDING', (0,0), (-1,-1), 5),
     ]))
     story.append(t_overview)
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 10))
 
-    # Render Visual Chart Matrix into PDF
-    story.append(Paragraph("2. Visual Analytics Dashboard Export", h2_style))
+    # Visual Analytics High-Res Render Section
+    story.append(Paragraph("2. High-Resolution Visual Dashboards", h2_style))
 
-    num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    cat_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
-    valid_cat_cols = [c for c in cat_cols if not c.lower().endswith('id') and df[c].nunique() <= 50]
+    num_cols, cat_cols = get_analytical_columns(df)
 
     if HAS_MATPLOTLIB and num_cols:
         try:
-            fig, axs = plt.subplots(2, 2, figsize=(7.5, 4.5))
+            plt.style.use('seaborn-v0_8-whitegrid' if 'seaborn-v0_8-whitegrid' in plt.style.available else 'default')
             
-            if valid_cat_cols:
-                df.groupby(valid_cat_cols[0])[num_cols[0]].sum().head(6).plot(kind='bar', ax=axs[0,0], color='#2563EB')
-                axs[0,0].set_title(f"1. {num_cols[0]} by {valid_cat_cols[0]}", fontsize=8, fontweight='bold')
+            # Subplot Configuration with Increased Height, Margins, and 300 DPI Rendering
+            fig, axs = plt.subplots(2, 2, figsize=(10, 7.5), dpi=300)
+            fig.subplots_adjust(hspace=0.45, wspace=0.35)
+
+            # Chart 1: Categorical Bar Chart
+            if cat_cols:
+                top_cats = df.groupby(cat_cols[0])[num_cols[0]].sum().nlargest(6)
+                top_cats.plot(kind='bar', ax=axs[0,0], color='#2563EB', edgecolor='none')
+                axs[0,0].set_title(f"1. Total {num_cols[0]} by {cat_cols[0]}", fontsize=9, fontweight='bold', pad=8)
+                axs[0,0].set_xlabel(cat_cols[0], fontsize=8, fontweight='bold')
+                axs[0,0].set_ylabel(num_cols[0], fontsize=8, fontweight='bold')
+                axs[0,0].tick_params(axis='x', rotation=25, labelsize=7.5)
             else:
-                df[num_cols[0]].plot(kind='hist', ax=axs[0,0], color='#2563EB')
-                axs[0,0].set_title(f"1. {num_cols[0]} Distribution", fontsize=8, fontweight='bold')
+                axs[0,0].hist(df[num_cols[0]].dropna(), bins=15, color='#2563EB', edgecolor='white')
+                axs[0,0].set_title(f"1. Distribution of {num_cols[0]}", fontsize=9, fontweight='bold', pad=8)
 
-            if len(valid_cat_cols) > 1:
-                df[valid_cat_cols[1]].value_counts().head(5).plot(kind='pie', ax=axs[0,1], autopct='%1.0f%%')
-                axs[0,1].set_title(f"2. {valid_cat_cols[1]} Share", fontsize=8, fontweight='bold')
-                axs[0,1].set_ylabel('')
+            # Chart 2: Clean Pie Chart
+            if len(cat_cols) > 1:
+                pie_data = df[cat_cols[1]].value_counts().head(5)
+                wedges, texts, autotexts = axs[0,1].pie(
+                    pie_data, labels=pie_data.index, autopct='%1.1f%%',
+                    startangle=140, colors=['#2563EB', '#3B82F6', '#60A5FA', '#93C5FD', '#BFDBFE'],
+                    textprops={'fontsize': 7.5}
+                )
+                for autotext in autotexts:
+                    autotext.set_color('white')
+                    autotext.set_weight('bold')
+                axs[0,1].set_title(f"2. {cat_cols[1]} Market Share", fontsize=9, fontweight='bold', pad=8)
             else:
-                df[num_cols[0]].plot(kind='box', ax=axs[0,1], color='#1D4ED8')
-                axs[0,1].set_title(f"2. {num_cols[0]} Boxplot", fontsize=8, fontweight='bold')
+                axs[0,1].boxplot(df[num_cols[0]].dropna(), vert=True, patch_artist=True,
+                                boxprops=dict(facecolor="#3B82F6", color="#1E40AF"))
+                axs[0,1].set_title(f"2. Outliers: {num_cols[0]}", fontsize=9, fontweight='bold', pad=8)
 
-            if valid_cat_cols:
-                df.groupby(valid_cat_cols[0])[num_cols[0]].mean().head(6).plot(kind='barh', ax=axs[1,0], color='#3B82F6')
-                axs[1,0].set_title(f"3. Avg {num_cols[0]}", fontsize=8, fontweight='bold')
+            # Chart 3: Horizontal Average Bar Chart
+            if cat_cols:
+                avg_data = df.groupby(cat_cols[0])[num_cols[0]].mean().nlargest(6).sort_values()
+                avg_data.plot(kind='barh', ax=axs[1,0], color='#1D4ED8')
+                axs[1,0].set_title(f"3. Avg {num_cols[0]} per {cat_cols[0]}", fontsize=9, fontweight='bold', pad=8)
+                axs[1,0].set_xlabel(num_cols[0], fontsize=8, fontweight='bold')
+                axs[1,0].set_ylabel(cat_cols[0], fontsize=8, fontweight='bold')
+                axs[1,0].tick_params(axis='y', labelsize=7.5)
 
-            if valid_cat_cols:
-                df[valid_cat_cols[0]].value_counts().head(6).plot(kind='bar', ax=axs[1,1], color='#60A5FA')
-                axs[1,1].set_title(f"4. Record Volume", fontsize=8, fontweight='bold')
+            # Chart 4: Volume Record Frequency
+            if cat_cols:
+                vol_data = df[cat_cols[0]].value_counts().head(6)
+                vol_data.plot(kind='bar', ax=axs[1,1], color='#60A5FA', edgecolor='none')
+                axs[1,1].set_title(f"4. Record Volume by {cat_cols[0]}", fontsize=9, fontweight='bold', pad=8)
+                axs[1,1].set_xlabel(cat_cols[0], fontsize=8, fontweight='bold')
+                axs[1,1].set_ylabel("Count", fontsize=8, fontweight='bold')
+                axs[1,1].tick_params(axis='x', rotation=25, labelsize=7.5)
 
-            plt.tight_layout()
             img_buf = io.BytesIO()
-            plt.savefig(img_buf, format='png', dpi=130)
+            plt.savefig(img_buf, format='png', dpi=300, bbox_inches='tight')
             plt.close(fig)
             img_buf.seek(0)
-            story.append(Image(img_buf, width=480, height=250))
+            
+            # Include Image in PDF with proportions preserved
+            story.append(Image(img_buf, width=510, height=360))
 
         except Exception as err:
-            story.append(Paragraph(f"<i>Chart Export Exception: {err}</i>", body_style))
+            story.append(Paragraph(f"<i>Visual Rendering Exception: {err}</i>", body_style))
     else:
-        story.append(Paragraph("<i>Matplotlib missing. Install matplotlib to include rendered visual charts in exported reports.</i>", body_style))
+        story.append(Paragraph("<i>Matplotlib missing. Install matplotlib to export rendered charts.</i>", body_style))
 
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 10))
 
     # Recommendations
     story.append(Paragraph("3. Executive Analyst Recommendations", h2_style))
@@ -292,7 +337,7 @@ def generate_native_pdf_report(df, domain_info, quality_info, recommendations):
 
 # Sidebar Navigation
 st.sidebar.title("🧠 Data Analyzer AI")
-st.sidebar.write("Upload a CSV or Excel dataset to perform end-to-end automated visual analytics.")
+st.sidebar.write("Upload a CSV or Excel dataset to begin high-resolution visual analysis.")
 
 uploaded_file = st.sidebar.file_uploader("Upload CSV / Excel File", type=["csv", "xlsx"])
 row_limit = st.sidebar.slider("Sampling Row Limit:", min_value=1000, max_value=10000, value=5000, step=1000)
@@ -301,6 +346,8 @@ if uploaded_file is not None:
     df = load_data(uploaded_file, row_limit=row_limit)
 
     if df is not None and not df.empty:
+        num_cols, cat_cols = get_analytical_columns(df)
+        
         target_field = st.sidebar.selectbox("Select Target / Driver Field:", df.columns)
         palette = st.sidebar.selectbox("Color Palette:", ["Blues", "Viridis", "Cividis", "Plasma", "Turbo", "Magma"], index=0)
 
@@ -335,7 +382,7 @@ if uploaded_file is not None:
 
         # App Header
         st.title("Data Analyzer AI")
-        st.caption("Intelligent Visual Analytics & Automated Reporting Platform")
+        st.caption("Intelligent High-Resolution Visual Analytics & Reporting Platform")
         st.info(f"Detected Industry / Domain: **{domain_info.get('domain', 'General')}** (Confidence: **{domain_info.get('confidence', 'Low')}**)")
 
         # Main Navigation Tabs
@@ -355,8 +402,8 @@ if uploaded_file is not None:
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("Loaded Records", f"{quality_info.get('total_rows', len(df)):,}")
             c2.metric("Total Columns", f"{quality_info.get('total_cols', len(df.columns)):,}")
-            c3.metric("Numeric Columns", len(df.select_dtypes(include=[np.number]).columns))
-            c4.metric("Categorical Columns", len(df.select_dtypes(include=['object', 'category']).columns))
+            c3.metric("Numeric Metrics", len(num_cols))
+            c4.metric("Categorical Dimensions", len(cat_cols))
 
             st.markdown("---")
             st.subheader("Dataset First 10 Rows")
@@ -366,20 +413,16 @@ if uploaded_file is not None:
         with tab2:
             st.subheader("Interactive Visual Dashboards (4 Charts Per Dashboard)")
             
-            num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-            cat_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
             date_cols = df.select_dtypes(include=['datetime64', 'datetime']).columns.tolist()
 
             if not date_cols:
-                for c in cat_cols:
+                for c in df.columns:
                     if 'date' in c.lower() or 'time' in c.lower():
                         try:
                             df[c] = pd.to_datetime(df[c])
                             date_cols.append(c)
                         except Exception:
                             pass
-
-            valid_cat_cols = [c for c in cat_cols if not c.lower().endswith('id') and df[c].nunique() <= 50]
 
             db_tab1, db_tab2, db_tab3, db_tab4 = st.tabs([
                 "Dashboard 1: Categorical Breakdown",
@@ -391,9 +434,9 @@ if uploaded_file is not None:
             # DASHBOARD 1 (4 CHARTS)
             with db_tab1:
                 st.markdown("#### Dashboard 1: Categorical & Dimension Breakdown")
-                if valid_cat_cols and num_cols:
+                if cat_cols and num_cols:
                     col_a, col_b = st.columns(2)
-                    c_dim = col_a.selectbox("Select Categorical Dimension:", valid_cat_cols, index=0, key="db1_cat")
+                    c_dim = col_a.selectbox("Select Categorical Dimension:", cat_cols, index=0, key="db1_cat")
                     m_metric = col_b.selectbox("Select Numerical Metric:", num_cols, index=0, key="db1_num")
 
                     r1_c1, r1_c2 = st.columns(2)
@@ -432,7 +475,7 @@ if uploaded_file is not None:
                 else:
                     st.warning("Requires categorical and numerical fields to display Dashboard 1.")
 
-            # DASHBOARD 2 (4 CHARTS WITH SAFE TRENDLINE GUARD)
+            # DASHBOARD 2 (4 CHARTS)
             with db_tab2:
                 st.markdown("#### Dashboard 2: Cross-Metric Relationship Analysis")
                 if len(num_cols) >= 2:
@@ -443,13 +486,12 @@ if uploaded_file is not None:
                     r1_c1, r1_c2 = st.columns(2)
                     r2_c1, r2_c2 = st.columns(2)
 
-                    # Chart 1: Safe Scatter with Exception Guard for statsmodels
                     with r1_c1:
                         try:
-                            fig2_1 = px.scatter(df, x=x_met, y=y_met, color=valid_cat_cols[0] if valid_cat_cols else None,
+                            fig2_1 = px.scatter(df, x=x_met, y=y_met, color=cat_cols[0] if cat_cols else None,
                                                 title=f"Chart 1: Scatter ({x_met} vs {y_met})", trendline="ols")
                         except Exception:
-                            fig2_1 = px.scatter(df, x=x_met, y=y_met, color=valid_cat_cols[0] if valid_cat_cols else None,
+                            fig2_1 = px.scatter(df, x=x_met, y=y_met, color=cat_cols[0] if cat_cols else None,
                                                 title=f"Chart 1: Scatter ({x_met} vs {y_met})")
                         st.plotly_chart(fig2_1, use_container_width=True)
 
@@ -477,7 +519,7 @@ if uploaded_file is not None:
                 if num_cols:
                     col_a, col_b = st.columns(2)
                     dist_col = col_a.selectbox("Metric for Distribution:", num_cols, index=0, key="db3_dist")
-                    group_cat = col_b.selectbox("Category Dimension Split:", valid_cat_cols if valid_cat_cols else [None], index=0, key="db3_split")
+                    group_cat = col_b.selectbox("Category Dimension Split:", cat_cols if cat_cols else [None], index=0, key="db3_split")
 
                     r1_c1, r1_c2 = st.columns(2)
                     r2_c1, r2_c2 = st.columns(2)
@@ -510,8 +552,8 @@ if uploaded_file is not None:
 
             # DASHBOARD 4 (4 CHARTS & Q&A)
             with db_tab4:
-                st.markdown("#### Dashboard 4: Interactive Q&A Engine & Automated Visual Querying")
-                st.write("Ask questions about your data or choose from generated hypotheses.")
+                st.markdown("#### Dashboard 4: Interactive Q&A Engine & Visual Querying")
+                st.write("Query your dataset directly using questions.")
 
                 if questions:
                     suggested_q = [q.get('question', '') for q in questions if q.get('question')]
@@ -525,10 +567,10 @@ if uploaded_file is not None:
                     if custom_q.strip():
                         st.markdown(f"**Query Executed:** *{custom_q}*")
                         matched_num = [c for c in num_cols if c.lower() in custom_q.lower()]
-                        matched_cat = [c for c in valid_cat_cols if c.lower() in custom_q.lower()]
+                        matched_cat = [c for c in cat_cols if c.lower() in custom_q.lower()]
 
                         m_col = matched_num[0] if matched_num else num_cols[0]
-                        c_col = matched_cat[0] if matched_cat else (valid_cat_cols[0] if valid_cat_cols else None)
+                        c_col = matched_cat[0] if matched_cat else (cat_cols[0] if cat_cols else None)
 
                         r1_c1, r1_c2 = st.columns(2)
                         r2_c1, r2_c2 = st.columns(2)
@@ -577,7 +619,7 @@ if uploaded_file is not None:
             if quality_info.get("is_perfect_quality", False):
                 st.success("✅ Dataset is completely clean with zero missing values or duplicate rows.")
             else:
-                st.warning("⚠️ Quality Notice: Missing entries, duplicate records, or extreme anomalies detected.")
+                st.warning("⚠️ Data Quality Notice: Missing values or duplicate rows detected.")
 
             col_q1, col_q2 = st.columns(2)
             with col_q1:
@@ -597,12 +639,12 @@ if uploaded_file is not None:
         # TAB 4: STATISTICS
         with tab4:
             st.subheader("Statistical Summary")
-            num_df = df.select_dtypes(include=[np.number])
+            num_df = df[num_cols] if num_cols else pd.DataFrame()
             if not num_df.empty:
                 st.write("**Numerical Summary**")
                 st.dataframe(num_df.describe().T, use_container_width=True)
 
-            cat_df = df.select_dtypes(include=['object', 'category'])
+            cat_df = df[cat_cols] if cat_cols else pd.DataFrame()
             if not cat_df.empty:
                 st.write("**Categorical Summary**")
                 st.dataframe(cat_df.describe().T, use_container_width=True)
@@ -635,12 +677,12 @@ if uploaded_file is not None:
 
         # TAB 7: RECOMMENDATIONS & DIRECT PDF DOWNLOAD
         with tab7:
-            st.subheader("Executive Analyst Recommendations & Complete PDF Export")
+            st.subheader("Executive Analyst Recommendations & High-Res PDF Export")
             
             pdf_bytes = generate_native_pdf_report(df, domain_info, quality_info, recommendations)
             
             st.download_button(
-                label="📄 Download Executive Report with Visual Charts (PDF)",
+                label="📄 Download Executive Report with Clear HD Charts (PDF)",
                 data=pdf_bytes,
                 file_name="Data_Analyzer_AI_Executive_Report.pdf",
                 mime="application/pdf",
