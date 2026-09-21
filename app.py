@@ -16,10 +16,14 @@ from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 
-# Matplotlib for Server-Side Memory-Safe PDF Chart Rendering
-import matplotlib
-matplotlib.use('Agg')  # Non-interactive backend for cloud execution
-import matplotlib.pyplot as plt
+# Safe Matplotlib Import for Cloud Execution
+try:
+    import matplotlib
+    matplotlib.use('Agg')  # Non-interactive backend for cloud execution
+    import matplotlib.pyplot as plt
+    HAS_MATPLOTLIB = True
+except ImportError:
+    HAS_MATPLOTLIB = False
 
 from sklearn.preprocessing import LabelEncoder
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
@@ -234,46 +238,49 @@ def generate_native_pdf_report(df, domain_info, quality_info, recommendations):
     cat_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
     valid_cat_cols = [c for c in cat_cols if not c.lower().endswith('id') and df[c].nunique() <= 50]
 
-    try:
-        # Generate Chart 1: Bar Chart (Top Categories)
-        if valid_cat_cols and num_cols:
-            cat_f = valid_cat_cols[0]
-            num_f = num_cols[0]
-            agg_df = df.groupby(cat_f)[num_f].sum().sort_values(ascending=False).head(8)
+    if HAS_MATPLOTLIB:
+        try:
+            # Generate Chart 1: Bar Chart (Top Categories)
+            if valid_cat_cols and num_cols:
+                cat_f = valid_cat_cols[0]
+                num_f = num_cols[0]
+                agg_df = df.groupby(cat_f)[num_f].sum().sort_values(ascending=False).head(8)
 
-            fig, ax = plt.subplots(figsize=(7, 3))
-            agg_df.plot(kind='bar', ax=ax, color='#2563EB', edgecolor='#1E3A8A')
-            ax.set_title(f"Top {cat_f} by Total {num_f}", fontsize=11, fontweight='bold', color='#1E3A8A')
-            ax.set_xlabel(cat_f, fontsize=9)
-            ax.set_ylabel(num_f, fontsize=9)
-            plt.xticks(rotation=30, ha='right', fontsize=8)
-            plt.tight_layout()
+                fig, ax = plt.subplots(figsize=(7, 3))
+                agg_df.plot(kind='bar', ax=ax, color='#2563EB', edgecolor='#1E3A8A')
+                ax.set_title(f"Top {cat_f} by Total {num_f}", fontsize=11, fontweight='bold', color='#1E3A8A')
+                ax.set_xlabel(cat_f, fontsize=9)
+                ax.set_ylabel(num_f, fontsize=9)
+                plt.xticks(rotation=30, ha='right', fontsize=8)
+                plt.tight_layout()
 
-            img_buf1 = io.BytesIO()
-            plt.savefig(img_buf1, format='png', dpi=150)
-            plt.close(fig)
-            img_buf1.seek(0)
-            story.append(Image(img_buf1, width=480, height=200))
-            story.append(Spacer(1, 8))
+                img_buf1 = io.BytesIO()
+                plt.savefig(img_buf1, format='png', dpi=150)
+                plt.close(fig)
+                img_buf1.seek(0)
+                story.append(Image(img_buf1, width=480, height=200))
+                story.append(Spacer(1, 8))
 
-        # Generate Chart 2: Scatter Plot Relationship
-        if len(num_cols) >= 2:
-            fig, ax = plt.subplots(figsize=(7, 3))
-            ax.scatter(df[num_cols[0]], df[num_cols[1]], alpha=0.6, color='#0284C7', edgecolors='none', s=20)
-            ax.set_title(f"Relationship: {num_cols[0]} vs {num_cols[1]}", fontsize=11, fontweight='bold', color='#1E3A8A')
-            ax.set_xlabel(num_cols[0], fontsize=9)
-            ax.set_ylabel(num_cols[1], fontsize=9)
-            plt.tight_layout()
+            # Generate Chart 2: Scatter Plot Relationship
+            if len(num_cols) >= 2:
+                fig, ax = plt.subplots(figsize=(7, 3))
+                ax.scatter(df[num_cols[0]], df[num_cols[1]], alpha=0.6, color='#0284C7', edgecolors='none', s=20)
+                ax.set_title(f"Relationship: {num_cols[0]} vs {num_cols[1]}", fontsize=11, fontweight='bold', color='#1E3A8A')
+                ax.set_xlabel(num_cols[0], fontsize=9)
+                ax.set_ylabel(num_cols[1], fontsize=9)
+                plt.tight_layout()
 
-            img_buf2 = io.BytesIO()
-            plt.savefig(img_buf2, format='png', dpi=150)
-            plt.close(fig)
-            img_buf2.seek(0)
-            story.append(Image(img_buf2, width=480, height=200))
-            story.append(Spacer(1, 8))
+                img_buf2 = io.BytesIO()
+                plt.savefig(img_buf2, format='png', dpi=150)
+                plt.close(fig)
+                img_buf2.seek(0)
+                story.append(Image(img_buf2, width=480, height=200))
+                story.append(Spacer(1, 8))
 
-    except Exception as err:
-        story.append(Paragraph(f"<i>Dashboard Chart Image Notice: {err}</i>", body_style))
+        except Exception as err:
+            story.append(Paragraph(f"<i>Dashboard Chart Image Notice: {err}</i>", body_style))
+    else:
+        story.append(Paragraph("<i>Note: matplotlib is missing. Please add 'matplotlib' to requirements.txt to enable chart rendering in PDF exports.</i>", body_style))
 
     story.append(Spacer(1, 10))
 
