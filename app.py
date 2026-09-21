@@ -1,4 +1,4 @@
-""""""
+"""
 app.py - Data Analyzer AI Platform (Matplotlib / Seaborn Dashboard Engine)
 Enterprise Streamlit application for automated data analysis, multi-dashboard visual analytics,
 machine learning driver modeling, and comprehensive 7-section PDF executive reporting.
@@ -78,27 +78,37 @@ st.set_page_config(
 
 # Custom Styling
 st.markdown("""
-    <style>
-    .stApp { background-color: #F8FAFC; }
-    .rec-box {
-        background-color: #FFFFFF;
-        border: 1px solid #E2E8F0;
-        border-left: 5px solid #2563EB;
-        border-radius: 10px;
-        padding: 20px;
-        margin-bottom: 16px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-    }
-    .rec-title { font-size: 17px; font-weight: 700; color: #1E3A8A; margin-bottom: 8px; }
-    .field-label { font-weight: 700; color: #334155; }
-    div[data-testid="stMetric"] {
-        background-color: #FFFFFF;
-        padding: 18px;
-        border-radius: 10px;
-        border: 1px solid #E2E8F0;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-    }
-    </style>
+<style>
+.stApp {
+    background-color: #F8FAFC;
+}
+.rec-box {
+    background-color: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-left: 5px solid #2563EB;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+}
+.rec-title {
+    font-size: 17px;
+    font-weight: 700;
+    color: #1E3A8A;
+    margin-bottom: 8px;
+}
+.field-label {
+    font-weight: 700;
+    color: #334155;
+}
+div[data-testid="stMetric"] {
+    background-color: #FFFFFF;
+    padding: 18px;
+    border-radius: 10px;
+    border: 1px solid #E2E8F0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+</style>
 """, unsafe_allow_html=True)
 
 
@@ -269,7 +279,6 @@ def generate_native_pdf_report(df, domain_info, quality_info, questions, recomme
     h2_style = ParagraphStyle('SectionHeading', parent=styles['Heading2'], fontSize=11, leading=14, textColor=colors.HexColor('#1E40AF'), spaceBefore=12, spaceAfter=6)
     body_style = ParagraphStyle('ReportBody', parent=styles['Normal'], fontSize=8.5, leading=11, textColor=colors.HexColor('#334155'))
     table_text = ParagraphStyle('TableText', parent=styles['Normal'], fontSize=7.5, leading=9, textColor=colors.HexColor('#1E293B'))
-    bold_style = ParagraphStyle('ReportBold', parent=body_style, fontName='Helvetica-Bold')
 
     # Document Header
     story.append(Paragraph("Data Analyzer AI Executive Report", title_style))
@@ -279,9 +288,7 @@ def generate_native_pdf_report(df, domain_info, quality_info, questions, recomme
 
     num_cols, cat_cols = get_analytical_columns(df)
 
-    # ---------------------------------------------------------
-    # TAB 1: OVERVIEW & DATASET PREVIEW
-    # ---------------------------------------------------------
+    # 1. OVERVIEW
     story.append(Paragraph("1. Overview & Dataset Preview", h2_style))
     overview_data = [
         ["Total Records", "Total Variables", "Numeric Attributes", "Categorical Dimensions"],
@@ -304,7 +311,6 @@ def generate_native_pdf_report(df, domain_info, quality_info, questions, recomme
     story.append(t_overview)
     story.append(Spacer(1, 6))
 
-    # Sample Data Table (First 5 Rows & Top 5 Columns)
     sample_df = df.iloc[:5, :5]
     sample_headers = [Paragraph(f"<b>{col}</b>", table_text) for col in sample_df.columns]
     sample_rows = [sample_headers]
@@ -322,9 +328,7 @@ def generate_native_pdf_report(df, domain_info, quality_info, questions, recomme
     story.append(t_sample)
     story.append(Spacer(1, 10))
 
-    # ---------------------------------------------------------
-    # TAB 2: DASHBOARD ANALYTICS (VISUAL CHARTS)
-    # ---------------------------------------------------------
+    # 2. DASHBOARD ANALYTICS
     story.append(Paragraph("2. Visual Dashboard Analytics", h2_style))
     if num_cols:
         try:
@@ -370,9 +374,7 @@ def generate_native_pdf_report(df, domain_info, quality_info, questions, recomme
 
     story.append(Spacer(1, 10))
 
-    # ---------------------------------------------------------
-    # TAB 3: DATA QUALITY AUDIT
-    # ---------------------------------------------------------
+    # 3. DATA QUALITY
     story.append(Paragraph("3. Data Quality & Integrity Audit", h2_style))
     missing_dict = quality_info.get("cols_with_missing", {})
     quality_status = "Clean (Zero Nulls)" if quality_info.get("is_perfect_quality", False) else "Action Required (Nulls/Duplicates Found)"
@@ -393,9 +395,7 @@ def generate_native_pdf_report(df, domain_info, quality_info, questions, recomme
     story.append(t_dq)
     story.append(Spacer(1, 10))
 
-    # ---------------------------------------------------------
-    # TAB 4: STATISTICAL PROFILING
-    # ---------------------------------------------------------
+    # 4. STATISTICS
     story.append(Paragraph("4. Statistical Profiling Summary", h2_style))
     if num_cols:
         desc_df = df[num_cols[:5]].describe().T[['mean', 'std', 'min', '50%', 'max']].reset_index()
@@ -424,9 +424,7 @@ def generate_native_pdf_report(df, domain_info, quality_info, questions, recomme
         
     story.append(Spacer(1, 10))
 
-    # ---------------------------------------------------------
-    # TAB 5: ANALYTICAL QUESTIONS
-    # ---------------------------------------------------------
+    # 5. ANALYTICAL QUESTIONS
     story.append(Paragraph("5. Domain Analytical Hypotheses", h2_style))
     if questions:
         for idx, q in enumerate(questions[:4], 1):
@@ -438,9 +436,7 @@ def generate_native_pdf_report(df, domain_info, quality_info, questions, recomme
 
     story.append(Spacer(1, 10))
 
-    # ---------------------------------------------------------
-    # TAB 6: RISK & FEATURE IMPORTANCE (ML)
-    # ---------------------------------------------------------
+    # 6. RISK & FEATURE IMPORTANCE
     story.append(Paragraph("6. Machine Learning Target Driver Analysis", h2_style))
     story.append(Paragraph(f"<b>Target Variable Evaluated:</b> {target_field}", body_style))
     story.append(Spacer(1, 3))
@@ -469,9 +465,7 @@ def generate_native_pdf_report(df, domain_info, quality_info, questions, recomme
 
     story.append(Spacer(1, 10))
 
-    # ---------------------------------------------------------
-    # TAB 7: RECOMMENDATIONS
-    # ---------------------------------------------------------
+    # 7. RECOMMENDATIONS
     story.append(Paragraph("7. Executive Analyst Strategic Recommendations", h2_style))
     if recommendations:
         for idx, rec in enumerate(recommendations, 1):
