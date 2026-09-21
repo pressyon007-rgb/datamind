@@ -1,5 +1,5 @@
-streamlit
-pandas
+streamlit>=1.30.0
+pandas>=2.0.0
 numpy
 plotly
 scikit-learn
@@ -9,3 +9,5 @@ reportlab
 matplotlib
 statsmodels
 scipy
+seaborn
+calamine
