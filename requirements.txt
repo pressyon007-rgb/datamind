@@ -7,3 +7,5 @@ openpyxl
 python-calamine
 reportlab
 matplotlib
+statsmodels
+scipy
