@@ -1,9 +1,10 @@
 """
 app.py - Data Analyzer AI Platform
 Interactive Streamlit application for data analysis, visual exploration, machine learning, and decision support.
-Optimized for high-performance cloud deployment and low memory footprint.
+Optimized for high-performance cloud deployment and direct PDF export.
 """
 
+import io
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -12,6 +13,12 @@ import plotly.graph_objects as go
 from sklearn.preprocessing import LabelEncoder
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.utils.multiclass import type_of_target
+
+# ReportLab Imports for Direct PDF Generation
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 
 # Import custom modules with safety guards
 try:
@@ -58,7 +65,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom Styling
+# Custom UI Styling
 st.markdown("""
     <style>
     .stApp {
@@ -94,7 +101,6 @@ def load_data(uploaded_file, row_limit=5000):
             df = pd.read_csv(uploaded_file)
         else:
             try:
-                # Attempt fast, low-memory reading with calamine or openpyxl
                 df = pd.read_excel(uploaded_file, sheet_name=0, engine='calamine')
             except Exception:
                 df = pd.read_excel(uploaded_file, sheet_name=0, engine='openpyxl')
@@ -124,7 +130,7 @@ def train_risk_model(df, target_col):
         
     encoders = {}
     
-    # Convert datetime columns into numerical year/month features
+    # Convert datetime columns into numerical features
     date_cols = data.select_dtypes(include=['datetime64', 'datetime']).columns.tolist()
     for col in date_cols:
         if col != target_col:
@@ -173,100 +179,114 @@ def train_risk_model(df, target_col):
     return model, encoders, importances, X.columns.tolist()
 
 
-# Helper Function for Generating Complete PDF-Ready Dashboard Report
-def generate_full_dashboard_report(df, domain_info, quality_info, recommendations):
-    """Generates a complete, print-ready HTML dashboard report designed for PDF export."""
-    
-    # Generate Data Quality Table
+# Helper Function: Native PDF Generator using ReportLab
+def generate_native_pdf_report(df, domain_info, quality_info, recommendations):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
+    story = []
+    styles = getSampleStyleSheet()
+
+    # Custom Paragraph Styles
+    title_style = ParagraphStyle('ReportTitle', parent=styles['Heading1'], fontSize=20, leading=24, textColor=colors.HexColor('#1E3A8A'))
+    h2_style = ParagraphStyle('SectionHeading', parent=styles['Heading2'], fontSize=14, leading=18, textColor=colors.HexColor('#1E40AF'), spaceBefore=12, spaceAfter=6)
+    body_style = ParagraphStyle('ReportBody', parent=styles['Normal'], fontSize=10, leading=14, textColor=colors.HexColor('#334155'))
+    bold_style = ParagraphStyle('ReportBold', parent=body_style, fontName='Helvetica-Bold')
+
+    # Title & Subtitle
+    story.append(Paragraph("Data Analyzer AI — Executive Summary Report", title_style))
+    story.append(Spacer(1, 8))
+    domain_text = f"<b>Detected Domain:</b> {domain_info.get('domain', 'General')} (Confidence: {domain_info.get('confidence', 'Low')})"
+    story.append(Paragraph(domain_text, body_style))
+    story.append(Spacer(1, 14))
+
+    # Section 1: Overview & Metrics Table
+    story.append(Paragraph("1. Overview & Key Metrics", h2_style))
+    overview_data = [
+        ["Total Records", "Total Columns", "Duplicate Rows", "Missing Values"],
+        [
+            f"{quality_info.get('total_rows', len(df)):,}",
+            f"{quality_info.get('total_cols', len(df.columns)):,}",
+            f"{quality_info.get('duplicate_rows', 0)}",
+            f"{quality_info.get('total_missing', 0)}"
+        ]
+    ]
+    t_overview = Table(overview_data, colWidths=[130, 130, 130, 130])
+    t_overview.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#F1F5F9')),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.HexColor('#1E293B')),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('GRID', (0,0), (-1,-1), 1, colors.HexColor('#CBD5E1')),
+        ('PADDING', (0,0), (-1,-1), 8),
+    ]))
+    story.append(t_overview)
+    story.append(Spacer(1, 14))
+
+    # Section 2: Data Quality Analysis
+    story.append(Paragraph("2. Data Quality Breakdown", h2_style))
     missing = quality_info.get("cols_with_missing", {})
-    missing_rows = "".join([f"<tr><td>{col}</td><td>{cnt}</td></tr>" for col, cnt in missing.items()]) if missing else "<tr><td colspan='2'>No missing values detected</td></tr>"
+    if missing:
+        quality_table_data = [["Column Name", "Missing Value Count"]]
+        for col, cnt in missing.items():
+            quality_table_data.append([str(col), str(cnt)])
+    else:
+        quality_table_data = [["Column Name", "Status"], ["All Columns", "Zero Missing Values Detected"]]
 
-    # Generate Statistical Summary Table
+    t_quality = Table(quality_table_data, colWidths=[260, 260])
+    t_quality.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#F1F5F9')),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#CBD5E1')),
+        ('PADDING', (0,0), (-1,-1), 6),
+    ]))
+    story.append(t_quality)
+    story.append(Spacer(1, 14))
+
+    # Section 3: Statistical Analysis Summary
     num_df = df.select_dtypes(include=[np.number])
-    stats_html = ""
     if not num_df.empty:
-        desc = num_df.describe().T.reset_index()
-        stats_rows = "".join([
-            f"<tr><td>{row['index']}</td><td>{row['mean']:.2f}</td><td>{row['std']:.2f}</td><td>{row['min']:.2f}</td><td>{row['50%']:.2f}</td><td>{row['max']:.2f}</td></tr>"
-            for _, row in desc.iterrows()
-        ])
-        stats_html = f"""
-        <h3>Numerical Statistics Summary</h3>
-        <table>
-            <thead><tr><th>Column</th><th>Mean</th><th>Std Dev</th><th>Min</th><th>Median</th><th>Max</th></tr></thead>
-            <tbody>{stats_rows}</tbody>
-        </table>
-        """
+        story.append(Paragraph("3. Numerical Statistical Analysis", h2_style))
+        desc = num_df.describe().T.reset_index().head(10)
+        stats_table_data = [["Column", "Mean", "Std Dev", "Min", "Median", "Max"]]
+        for _, row in desc.iterrows():
+            stats_table_data.append([
+                str(row['index'])[:15],
+                f"{row['mean']:.2f}",
+                f"{row['std']:.2f}",
+                f"{row['min']:.2f}",
+                f"{row['50%']:.2f}",
+                f"{row['max']:.2f}"
+            ])
+        t_stats = Table(stats_table_data, colWidths=[120, 80, 80, 80, 80, 80])
+        t_stats.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#F1F5F9')),
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#CBD5E1')),
+            ('PADDING', (0,0), (-1,-1), 5),
+            ('FONTSIZE', (0,0), (-1,-1), 9),
+        ]))
+        story.append(t_stats)
+        story.append(Spacer(1, 14))
 
-    # Generate Recommendations Section
-    rec_html = ""
-    for idx, rec in enumerate(recommendations, 1):
-        rec_html += f"""
-        <div style="border: 1px solid #CBD5E1; border-left: 5px solid #2563EB; border-radius: 6px; padding: 15px; margin-bottom: 15px; background-color: #FAFAFA;">
-            <h3 style="color: #1E3A8A; margin-top: 0;">Recommendation {idx}: {rec.get('business_area', 'Strategy')}</h3>
-            <p><strong>Chart / Data Outcome:</strong> {rec.get('chart_outcome', 'N/A')}</p>
-            <p><strong>What This Means:</strong> {rec.get('what_this_means', 'N/A')}</p>
-            <p><strong>Limitation:</strong> {rec.get('limitation', 'N/A')}</p>
-            <p><strong>Analyst Recommendation:</strong> {rec.get('analyst_recommendation', 'N/A')}</p>
-            <p><strong>Action / Development:</strong> {rec.get('action_development', 'N/A')}</p>
-        </div>
-        """
+    # Section 4: Analyst Recommendations
+    story.append(Paragraph("4. Strategic Recommendations", h2_style))
+    if recommendations:
+        for idx, rec in enumerate(recommendations, 1):
+            rec_title = f"<b>Recommendation {idx}: {rec.get('business_area', 'Strategy')}</b>"
+            story.append(Paragraph(rec_title, bold_style))
+            story.append(Paragraph(f"• <b>Chart Outcome:</b> {rec.get('chart_outcome', 'N/A')}", body_style))
+            story.append(Paragraph(f"• <b>What This Means:</b> {rec.get('what_this_means', 'N/A')}", body_style))
+            story.append(Paragraph(f"• <b>Limitation:</b> {rec.get('limitation', 'N/A')}", body_style))
+            story.append(Paragraph(f"• <b>Analyst Recommendation:</b> {rec.get('analyst_recommendation', 'N/A')}", body_style))
+            story.append(Paragraph(f"• <b>Action Plan:</b> {rec.get('action_development', 'N/A')}", body_style))
+            story.append(Spacer(1, 8))
+    else:
+        story.append(Paragraph("No explicit recommendations generated for this dataset structure.", body_style))
 
-    html_content = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Data Analyzer AI - Complete Executive PDF Report</title>
-        <style>
-            @page {{ size: A4; margin: 20mm; }}
-            body {{ font-family: 'Helvetica Neue', Arial, sans-serif; color: #334155; line-height: 1.5; margin: 30px; }}
-            h1 {{ color: #1E3A8A; border-bottom: 3px solid #2563EB; padding-bottom: 8px; margin-bottom: 5px; }}
-            h2 {{ color: #1E40AF; border-bottom: 1px solid #E2E8F0; padding-bottom: 5px; margin-top: 25px; page-break-after: avoid; }}
-            h3 {{ color: #1E3A8A; margin-bottom: 5px; }}
-            .metric-card {{ display: inline-block; width: 22%; background: #F8FAFC; border: 1px solid #E2E8F0; padding: 12px; border-radius: 6px; text-align: center; margin-right: 1.5%; }}
-            .metric-val {{ font-size: 20px; font-weight: bold; color: #2563EB; }}
-            table {{ width: 100%; border-collapse: collapse; margin-top: 10px; margin-bottom: 20px; font-size: 13px; }}
-            th, td {{ border: 1px solid #CBD5E1; padding: 8px; text-align: left; }}
-            th {{ background-color: #F1F5F9; color: #1E293B; }}
-            .print-btn {{
-                background-color: #2563EB; color: white; border: none; padding: 12px 24px; font-size: 16px; font-weight: bold;
-                border-radius: 6px; cursor: pointer; margin-bottom: 20px;
-            }}
-            @media print {{
-                .print-btn {{ display: none; }}
-            }}
-        </style>
-    </head>
-    <body>
-        <button class="print-btn" onclick="window.print()">🖨️ Click Here to Save / Print as PDF</button>
-        
-        <h1>🧠 Data Analyzer AI — Full Dashboard Report</h1>
-        <p><strong>Detected Domain:</strong> {domain_info.get('domain', 'General')} (Confidence: {domain_info.get('confidence', 'Low')})</p>
-        
-        <h2>1. Overview & Key Metrics</h2>
-        <div class="metric-card">Total Records<br><span class="metric-val">{quality_info.get('total_rows', len(df)):,}</span></div>
-        <div class="metric-card">Total Columns<br><span class="metric-val">{quality_info.get('total_cols', len(df.columns)):,}</span></div>
-        <div class="metric-card">Duplicate Rows<br><span class="metric-val">{quality_info.get('duplicate_rows', 0)}</span></div>
-        <div class="metric-card">Missing Values<br><span class="metric-val">{quality_info.get('total_missing', 0)}</span></div>
-
-        <h2>2. Data Quality Analysis</h2>
-        <table>
-            <thead><tr><th>Column Name</th><th>Missing Count</th></tr></thead>
-            <tbody>{missing_rows}</tbody>
-        </table>
-
-        <h2>3. Statistical Analysis</h2>
-        {stats_html}
-
-        <h2>4. Strategic Recommendations</h2>
-        {rec_html if rec_html else "<p>No explicit recommendations generated for this dataset.</p>"}
-
-        <hr>
-        <p style="font-size: 11px; color: #94A3B8; text-align: center;">Generated automatically by Data Analyzer AI Platform</p>
-    </body>
-    </html>
-    """
-    return html_content
+    # Build PDF Document
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.getvalue()
 
 
 # Sidebar Configuration
@@ -548,22 +568,21 @@ if uploaded_file is not None:
                     except Exception as e:
                         st.error(f"Could not build feature importance model: {e}")
 
-        # TAB 7: RECOMMENDATIONS & FULL PDF REPORT DOWNLOAD
+        # TAB 7: RECOMMENDATIONS & DIRECT PDF DOWNLOAD
         with tab7:
-            st.subheader("Evidence-Based Data Analyst Recommendations & Full Report Export")
+            st.subheader("Evidence-Based Data Analyst Recommendations & Executive Export")
             
-            # Generate Full Report
-            report_html = generate_full_dashboard_report(df, domain_info, quality_info, recommendations)
+            # Generate Direct Native PDF Bytes
+            pdf_bytes = generate_native_pdf_report(df, domain_info, quality_info, recommendations)
             
             st.download_button(
-                label="📄 Download Complete Full Dashboard Report (PDF Ready)",
-                data=report_html,
-                file_name="Data_Analyzer_AI_Full_Report.html",
-                mime="text/html",
+                label="📄 Download Complete Executive Report (PDF)",
+                data=pdf_bytes,
+                file_name="Data_Analyzer_AI_Executive_Report.pdf",
+                mime="application/pdf",
                 type="primary"
             )
             
-            st.info("💡 **To Save as PDF:** Open the downloaded HTML file in your web browser and click the top **🖨️ Click Here to Save / Print as PDF** button, or press `Ctrl + P` (`Cmd + P` on Mac) and select **Save as PDF**.")
             st.markdown("---")
 
             if recommendations:
