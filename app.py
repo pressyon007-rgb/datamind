@@ -1,7 +1,7 @@
 """
 app.py - Data Analyzer AI Platform
 Interactive Streamlit application for data analysis, visual exploration, machine learning, and decision support.
-Optimized for high-performance cloud deployment and direct PDF export.
+Optimized for high-performance cloud deployment with visual dashboard chart PDF exports.
 """
 
 import io
@@ -18,7 +18,7 @@ from sklearn.utils.multiclass import type_of_target
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 
 # Import custom modules with safety guards
 try:
@@ -179,8 +179,8 @@ def train_risk_model(df, target_col):
     return model, encoders, importances, X.columns.tolist()
 
 
-# Helper Function: Native PDF Generator using ReportLab
-def generate_native_pdf_report(df, domain_info, quality_info, recommendations):
+# Helper Function: Native PDF Generator with Embedded Dashboard Charts
+def generate_native_pdf_report(df, domain_info, quality_info, recommendations, palette):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
     story = []
@@ -193,7 +193,7 @@ def generate_native_pdf_report(df, domain_info, quality_info, recommendations):
     bold_style = ParagraphStyle('ReportBold', parent=body_style, fontName='Helvetica-Bold')
 
     # Title & Subtitle
-    story.append(Paragraph("Data Analyzer AI — Executive Summary Report", title_style))
+    story.append(Paragraph("Data Analyzer AI — Executive Dashboard & Analysis Report", title_style))
     story.append(Spacer(1, 8))
     domain_text = f"<b>Detected Domain:</b> {domain_info.get('domain', 'General')} (Confidence: {domain_info.get('confidence', 'Low')})"
     story.append(Paragraph(domain_text, body_style))
@@ -222,8 +222,38 @@ def generate_native_pdf_report(df, domain_info, quality_info, recommendations):
     story.append(t_overview)
     story.append(Spacer(1, 14))
 
-    # Section 2: Data Quality Analysis
-    story.append(Paragraph("2. Data Quality Breakdown", h2_style))
+    # Section 2: Visual Dashboard Section (Embedded Plotly Charts)
+    story.append(Paragraph("2. Visual Analytics Dashboard", h2_style))
+    num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    cat_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
+    valid_cat_cols = [c for c in cat_cols if not c.lower().endswith('id') and df[c].nunique() <= 50]
+
+    try:
+        # Chart 1: Bar Breakdown Chart
+        if valid_cat_cols and num_cols:
+            cat_field = valid_cat_cols[0]
+            num_field = num_cols[0]
+            top_agg = df.groupby(cat_field)[num_field].sum().sort_values(ascending=False).head(10).reset_index()
+            fig1 = px.bar(top_agg, x=cat_field, y=num_field, color=num_field, color_continuous_scale=palette.lower(),
+                          title=f"Top 10 {cat_field} by {num_field}")
+            img_bytes1 = fig1.to_image(format="png", width=500, height=260)
+            story.append(Image(io.BytesIO(img_bytes1), width=500, height=260))
+            story.append(Spacer(1, 10))
+
+        # Chart 2: Scatter Plot Relationship Chart
+        if len(num_cols) >= 2:
+            fig2 = px.scatter(df, x=num_cols[0], y=num_cols[1], title=f"Relationship: {num_cols[0]} vs {num_cols[1]}")
+            img_bytes2 = fig2.to_image(format="png", width=500, height=260)
+            story.append(Image(io.BytesIO(img_bytes2), width=500, height=260))
+            story.append(Spacer(1, 10))
+
+    except Exception:
+        story.append(Paragraph("<i>Note: Visual dashboard charts could not be embedded due to static image export constraints.</i>", body_style))
+
+    story.append(Spacer(1, 10))
+
+    # Section 3: Data Quality Analysis
+    story.append(Paragraph("3. Data Quality Breakdown", h2_style))
     missing = quality_info.get("cols_with_missing", {})
     if missing:
         quality_table_data = [["Column Name", "Missing Value Count"]]
@@ -242,10 +272,9 @@ def generate_native_pdf_report(df, domain_info, quality_info, recommendations):
     story.append(t_quality)
     story.append(Spacer(1, 14))
 
-    # Section 3: Statistical Analysis Summary
-    num_df = df.select_dtypes(include=[np.number])
+    # Section 4: Statistical Analysis Summary
     if not num_df.empty:
-        story.append(Paragraph("3. Numerical Statistical Analysis", h2_style))
+        story.append(Paragraph("4. Numerical Statistical Analysis", h2_style))
         desc = num_df.describe().T.reset_index().head(10)
         stats_table_data = [["Column", "Mean", "Std Dev", "Min", "Median", "Max"]]
         for _, row in desc.iterrows():
@@ -268,8 +297,8 @@ def generate_native_pdf_report(df, domain_info, quality_info, recommendations):
         story.append(t_stats)
         story.append(Spacer(1, 14))
 
-    # Section 4: Analyst Recommendations
-    story.append(Paragraph("4. Strategic Recommendations", h2_style))
+    # Section 5: Analyst Recommendations
+    story.append(Paragraph("5. Strategic Recommendations", h2_style))
     if recommendations:
         for idx, rec in enumerate(recommendations, 1):
             rec_title = f"<b>Recommendation {idx}: {rec.get('business_area', 'Strategy')}</b>"
@@ -568,15 +597,16 @@ if uploaded_file is not None:
                     except Exception as e:
                         st.error(f"Could not build feature importance model: {e}")
 
-        # TAB 7: RECOMMENDATIONS & DIRECT PDF DOWNLOAD
+        # TAB 7: RECOMMENDATIONS & DIRECT PDF DOWNLOAD WITH CHARTS
         with tab7:
             st.subheader("Evidence-Based Data Analyst Recommendations & Executive Export")
             
-            # Generate Direct Native PDF Bytes
-            pdf_bytes = generate_native_pdf_report(df, domain_info, quality_info, recommendations)
+            # Generate Direct Native PDF Bytes with Dashboard Charts
+            with st.spinner("Generating PDF report with dashboard visual charts..."):
+                pdf_bytes = generate_native_pdf_report(df, domain_info, quality_info, recommendations, palette)
             
             st.download_button(
-                label="📄 Download Complete Executive Report (PDF)",
+                label="📄 Download Complete Executive Report with Dashboard Charts (PDF)",
                 data=pdf_bytes,
                 file_name="Data_Analyzer_AI_Executive_Report.pdf",
                 mime="application/pdf",
