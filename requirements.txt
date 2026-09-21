@@ -12,6 +12,3 @@ scipy
 seaborn
 calamine
 
-
-
-
