@@ -173,6 +173,55 @@ def train_risk_model(df, target_col):
     return model, encoders, importances, X.columns.tolist()
 
 
+# Helper Function for Generating HTML Final Report
+def generate_html_report(df, domain_info, quality_info, recommendations):
+    rec_html = ""
+    for idx, rec in enumerate(recommendations, 1):
+        rec_html += f"""
+        <div style="border: 1px solid #CBD5E1; border-left: 5px solid #2563EB; border-radius: 6px; padding: 15px; margin-bottom: 15px; background-color: #FAFAFA;">
+            <h3 style="color: #1E3A8A; margin-top: 0;">Recommendation {idx}: {rec.get('business_area', 'Strategy')}</h3>
+            <p><strong>Chart / Data Outcome:</strong> {rec.get('chart_outcome', 'N/A')}</p>
+            <p><strong>What This Means:</strong> {rec.get('what_this_means', 'N/A')}</p>
+            <p><strong>Limitation:</strong> {rec.get('limitation', 'N/A')}</p>
+            <p><strong>Analyst Recommendation:</strong> {rec.get('analyst_recommendation', 'N/A')}</p>
+            <p><strong>Action / Development:</strong> {rec.get('action_development', 'N/A')}</p>
+        </div>
+        """
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Data Analyzer AI - Executive Report</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; margin: 40px; color: #334155; line-height: 1.6; }}
+            h1 {{ color: #1E3A8A; border-bottom: 2px solid #2563EB; padding-bottom: 10px; }}
+            .metric-box {{ display: inline-block; width: 20%; background: #F1F5F9; padding: 15px; border-radius: 8px; margin-right: 2%; text-align: center; }}
+            .metric-val {{ font-size: 20px; font-weight: bold; color: #2563EB; }}
+        </style>
+    </head>
+    <body>
+        <h1>🧠 Data Analyzer AI - Final Analysis Report</h1>
+        <p><strong>Detected Industry / Domain:</strong> {domain_info.get('domain', 'General')} (Confidence: {domain_info.get('confidence', 'Low')})</p>
+        
+        <h2>Dataset Summary</h2>
+        <div class="metric-box">Total Records<br><span class="metric-val">{quality_info.get('total_rows', len(df)):,}</span></div>
+        <div class="metric-box">Total Columns<br><span class="metric-val">{quality_info.get('total_cols', len(df.columns)):,}</span></div>
+        <div class="metric-box">Duplicate Rows<br><span class="metric-val">{quality_info.get('duplicate_rows', 0)}</span></div>
+        <div class="metric-box">Missing Values<br><span class="metric-val">{quality_info.get('total_missing', 0)}</span></div>
+        
+        <br><br>
+        <h2>Strategic Recommendations</h2>
+        {rec_html if rec_html else "<p>No explicit recommendations generated for this dataset.</p>"}
+        
+        <hr>
+        <p style="font-size: 12px; color: #94A3B8;">Generated automatically by Data Analyzer AI Platform.</p>
+    </body>
+    </html>
+    """
+    return html_content
+
+
 # Sidebar Configuration
 st.sidebar.title("🧠 Data Analyzer AI")
 st.sidebar.write("Upload a CSV or Excel file to analyze structure, quality, and recommendations.")
@@ -452,9 +501,23 @@ if uploaded_file is not None:
                     except Exception as e:
                         st.error(f"Could not build feature importance model: {e}")
 
-        # TAB 7: RECOMMENDATIONS
+        # TAB 7: RECOMMENDATIONS & FINAL REPORT DOWNLOAD
         with tab7:
             st.subheader("Evidence-Based Data Analyst Recommendations")
+            
+            # Generate and render download button at top of Tab 7
+            report_html = generate_html_report(df, domain_info, quality_info, recommendations)
+            
+            st.download_button(
+                label="📥 Download Final Executive Report (HTML)",
+                data=report_html,
+                file_name="Data_Analyzer_AI_Executive_Report.html",
+                mime="text/html",
+                type="primary"
+            )
+            
+            st.markdown("---")
+
             if recommendations:
                 for idx, rec in enumerate(recommendations, 1):
                     st.markdown(f"""
