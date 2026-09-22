@@ -2730,3 +2730,4 @@ def _answer_user_request(
 
                     row = (
                         eligible
+                    )
