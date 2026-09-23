@@ -3,17 +3,34 @@ ai_analyst.py - Gemini AI Integration for Custom Data Queries
 """
 
 import os
-import google.generativeai as genai
+
+# Safe import guard for google-generativeai
+try:
+    import google.generativeai as genai
+    GENAI_AVAILABLE = True
+except ImportError:
+    GENAI_AVAILABLE = False
 
 
 def ask_data_analyst(question, data_context, insights=None, recommendations=None):
     """
     Sends the user's analytical question and dataset context to Gemini.
     """
+    if not GENAI_AVAILABLE:
+        return (
+            "⚠️ **`google-generativeai` package is not installed.**\n\n"
+            "Please ensure `google-generativeai` is added to your `requirements.txt` file "
+            "so Streamlit Cloud can install it automatically."
+        )
+
     api_key = os.getenv("GEMINI_API_KEY")
     
     if not api_key:
-        return "⚠️ **GEMINI_API_KEY environment variable is missing.** Please set your Gemini API key in your environment or Streamlit secrets to enable AI chat."
+        return (
+            "⚠️ **GEMINI_API_KEY environment variable is missing.**\n\n"
+            "Please add your key under **Settings > Secrets** in Streamlit Cloud as:\n"
+            "```toml\nGEMINI_API_KEY = \"your-api-key-here\"\n```"
+        )
 
     try:
         genai.configure(api_key=api_key)
