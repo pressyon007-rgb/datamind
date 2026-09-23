@@ -1,11 +1,3 @@
-import os
-import sys
-
-# Correctly resolve the application root directory and place it at position 0 of sys.path
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-if BASE_DIR not in sys.path:
-    sys.path.insert(0, BASE_DIR)
-
 import re
 import html
 import urllib.parse
@@ -18,49 +10,37 @@ import pickle
 import time
 import streamlit as st
 import pandas as pd
-from modules.user_demand_engine import render_user_demand_section
-from modules.data_loader import (
+
+# Direct imports matching your root repository layout
+from user_demand_engine import render_user_demand_section
+from data_loader import (
     load_file,
     convert_date_columns,
     detect_column_types
 )
-from modules.profiler import (
+from profiler import (
     get_data_profile,
     get_missing_values,
     get_data_quality_score,
     get_summary_statistics,
     detect_outliers
 )
-from modules.analytics import (
+from analytics import (
     calculate_kpis,
     calculate_correlations,
     get_numeric_summary
 )
-from modules.dashboard_engine import (
-    generate_sheet_templates
-)
-from modules.chart_engine import (
-    create_chart
-)
-from modules.insight_engine import (
-    generate_insights
-)
-from modules.recommendation_engine import (
-    generate_recommendations
-)
-from modules.web_research import (
+from dashboard_engine import generate_sheet_templates
+from chart_engine import create_chart
+from insight_engine import generate_insights
+from recommendation_engine import generate_recommendations
+from web_research import (
     research_dataset,
     get_research_sources
 )
-from modules.data_context import (
-    create_data_context
-)
-from modules.ai_analyst import (
-    ask_data_analyst
-)
-from modules.report_generator import (
-    generate_pdf
-)
+from data_context import create_data_context
+from ai_analyst import ask_data_analyst
+from report_generator import generate_pdf
 
 # ==========================================================
 # DATA-DRIVEN QUESTION GENERATOR
