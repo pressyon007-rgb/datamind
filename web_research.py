@@ -1,6 +1,5 @@
 """
 web_research.py - Domain Discovery & Contextual Analysis
-Identifies the likely industry/domain of an uploaded dataset based on column signatures.
 """
 
 DOMAIN_SIGNATURES = {
@@ -36,7 +35,7 @@ DOMAIN_SIGNATURES = {
 def detect_domain(df):
     """
     Analyzes dataframe columns and infers the industry domain.
-    Always returns a structured dictionary.
+    Always returns a clean, plain Python dictionary.
     """
     default_res = {
         "domain": "General / Operations",
@@ -67,8 +66,8 @@ def detect_domain(df):
 
         confidence = "High" if max_score >= 3 else ("Medium" if max_score == 2 else "Low")
         return {
-            "domain": best_domain,
-            "confidence": confidence,
+            "domain": str(best_domain),
+            "confidence": str(confidence),
             "matched_terms": list(set(matches[best_domain]))
         }
     except Exception:
