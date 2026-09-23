@@ -53,7 +53,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-@st.cache_data
+# File Loader
 def load_uploaded_file(file):
     try:
         if file.name.endswith('.csv'):
@@ -64,10 +64,17 @@ def load_uploaded_file(file):
         st.error(f"Error reading file: {e}")
         return None
 
+# Model Trainer
 def train_risk_model(df, target_col):
+    if target_col not in df.columns:
+        raise ValueError(f"Selected target '{target_col}' not found in dataframe.")
+        
     data = df.copy().dropna()
     encoders = {}
     
+    if data.empty or len(data) < 2:
+        raise ValueError("Not enough non-null records available to train feature importance model.")
+
     date_cols = data.select_dtypes(include=['datetime64', 'datetime']).columns.tolist()
     for col in date_cols:
         if col != target_col:
@@ -76,7 +83,7 @@ def train_risk_model(df, target_col):
         data = data.drop(columns=[col])
 
     for col in list(data.columns):
-        if col != target_col and (col.lower().endswith('id') or data[col].nunique() > 100):
+        if col != target_col and (str(col).lower().endswith('id') or data[col].nunique() > 100):
             data = data.drop(columns=[col])
 
     cat_cols = data.select_dtypes(include=['object', 'category']).columns.tolist()
@@ -89,6 +96,9 @@ def train_risk_model(df, target_col):
     X = data.drop(columns=[target_col])
     y = data[target_col]
     
+    if X.shape[1] == 0:
+        raise ValueError("No viable predictor features remain after data preparation.")
+
     target_type = type_of_target(y)
     
     if target_type == 'continuous':
@@ -116,23 +126,46 @@ st.sidebar.title("🧠 Data Analyzer AI")
 uploaded_file = st.sidebar.file_uploader("Upload CSV / Excel File", type=["csv", "xlsx"])
 
 if uploaded_file is not None:
-    df = load_uploaded_file(uploaded_file)
+    raw_df = load_uploaded_file(uploaded_file)
 
-    if df is not None:
-        target_field = st.sidebar.selectbox("Select Target / Risk Field:", df.columns)
+    if raw_df is not None and not raw_df.empty:
+        # Create a clean local copy
+        df = raw_df.copy()
+
+        # Target selection with fallback index
+        target_field = st.sidebar.selectbox("Select Target / Risk Field:", df.columns, index=0)
         palette = st.sidebar.selectbox("Select Dashboard Color Theme:", ["Blues", "Viridis", "Cividis", "Plasma", "Turbo", "Magma"], index=0)
 
-        # Run Domain Discovery with Type Guard
-        domain_info = detect_domain(df)
+        # Run domain and quality computations wrapped in try-blocks
+        try:
+            domain_info = detect_domain(df)
+        except Exception:
+            domain_info = {"domain": "General / Operations", "confidence": "Low", "matched_terms": []}
+
         if not isinstance(domain_info, dict):
             domain_info = {"domain": "General / Operations", "confidence": "Low", "matched_terms": []}
 
-        quality_info = analyze_data_quality(df)
-        relationships = compute_relationships(df)
-        questions = generate_analytical_questions(df, domain_info)
-        recommendations = generate_recommendations(df, quality_info, relationships, domain_info)
+        try:
+            quality_info = analyze_data_quality(df)
+        except Exception:
+            quality_info = {"total_rows": len(df), "total_cols": len(df.columns), "is_perfect_quality": False, "total_missing": 0, "cols_with_missing": {}, "duplicate_rows": 0, "outliers": {}}
 
-        # Main Display
+        try:
+            relationships = compute_relationships(df)
+        except Exception:
+            relationships = []
+
+        try:
+            questions = generate_analytical_questions(df, domain_info)
+        except Exception:
+            questions = []
+
+        try:
+            recommendations = generate_recommendations(df, quality_info, relationships, domain_info)
+        except Exception:
+            recommendations = []
+
+        # Main Interface
         st.title("Data Analyzer AI")
         st.caption("Intelligent Data Analysis & Decision Support Platform")
         st.info(f"Detected Industry / Domain: **{domain_info.get('domain', 'General')}** (Confidence: **{domain_info.get('confidence', 'N/A')}**)")
@@ -152,8 +185,8 @@ if uploaded_file is not None:
         with tab1:
             st.subheader("Dataset Summary & Structure")
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Total Records", f"{quality_info.get('total_rows', 0):,}" if isinstance(quality_info, dict) else len(df))
-            c2.metric("Total Columns", f"{quality_info.get('total_cols', 0):,}" if isinstance(quality_info, dict) else len(df.columns))
+            c1.metric("Total Records", f"{quality_info.get('total_rows', len(df)):,}")
+            c2.metric("Total Columns", f"{quality_info.get('total_cols', len(df.columns)):,}")
             c3.metric("Numeric Columns", len(df.select_dtypes(include=[np.number]).columns))
             c4.metric("Categorical Columns", len(df.select_dtypes(include=['object', 'category']).columns))
 
@@ -164,7 +197,6 @@ if uploaded_file is not None:
         with tab2:
             st.subheader("Interactive Visual Dashboard & Custom Chart Builder")
             num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-            cat_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
 
             with st.expander("🎨 Custom Chart Builder", expanded=True):
                 b_col1, b_col2, b_col3, b_col4 = st.columns(4)
@@ -219,26 +251,25 @@ if uploaded_file is not None:
 
         with tab3:
             st.subheader("Data Quality & Integrity")
-            if isinstance(quality_info, dict):
-                if quality_info.get("is_perfect_quality", False):
-                    st.success("✅ Positive Finding: No missing values or duplicates detected.")
+            if quality_info.get("is_perfect_quality", False):
+                st.success("✅ Positive Finding: No missing values or duplicates detected.")
+            else:
+                st.warning("⚠️ Data Quality Notice: Missing values or duplicates were found.")
+
+            col_q1, col_q2 = st.columns(2)
+            with col_q1:
+                st.write("**Missing Values**")
+                missing_cols = quality_info.get("cols_with_missing", {})
+                if missing_cols:
+                    st.dataframe(pd.DataFrame(list(missing_cols.items()), columns=["Column", "Missing Count"]), use_container_width=True)
                 else:
-                    st.warning("⚠️ Data Quality Notice: Missing values or duplicates were found.")
+                    st.info("Zero missing values across all columns.")
 
-                col_q1, col_q2 = st.columns(2)
-                with col_q1:
-                    st.write("**Missing Values**")
-                    missing_cols = quality_info.get("cols_with_missing", {})
-                    if missing_cols:
-                        st.dataframe(pd.DataFrame(list(missing_cols.items()), columns=["Column", "Missing Count"]), use_container_width=True)
-                    else:
-                        st.info("Zero missing values across all columns.")
-
-                with col_q2:
-                    st.write("**Data Integrity Metrics**")
-                    st.write(f"- Duplicate Rows: **{quality_info.get('duplicate_rows', 0)}**")
-                    st.write(f"- Empty Columns: **{len(quality_info.get('empty_cols', []))}**")
-                    st.write(f"- Columns with Outliers: **{len(quality_info.get('outliers', {}))}**")
+            with col_q2:
+                st.write("**Data Integrity Metrics**")
+                st.write(f"- Duplicate Rows: **{quality_info.get('duplicate_rows', 0)}**")
+                st.write(f"- Empty Columns: **{len(quality_info.get('empty_cols', []))}**")
+                st.write(f"- Columns with Outliers: **{len(quality_info.get('outliers', {}))}**")
 
         with tab4:
             st.subheader("Statistical Analysis")
@@ -254,7 +285,7 @@ if uploaded_file is not None:
 
         with tab5:
             st.subheader("Analytical Questions & Hypotheses")
-            if isinstance(questions, list):
+            if questions:
                 for q in questions:
                     if isinstance(q, dict):
                         with st.expander(f"📌 {q.get('category', 'Analysis')}: {q.get('question', '')}"):
@@ -272,7 +303,7 @@ if uploaded_file is not None:
 
         with tab7:
             st.subheader("Evidence-Based Data Analyst Recommendations")
-            if isinstance(recommendations, list):
+            if recommendations:
                 for idx, rec in enumerate(recommendations, 1):
                     if isinstance(rec, dict):
                         st.markdown(f"""
@@ -303,5 +334,7 @@ if uploaded_file is not None:
                         st.write(ai_response)
                 else:
                     st.warning("Please enter a question to analyze.")
+    else:
+        st.warning("Uploaded file is empty or could not be parsed.")
 else:
     st.info("👈 Upload a CSV or Excel dataset in the sidebar to begin.")
