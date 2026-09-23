@@ -1,5 +1,5 @@
 """
-app.py - Data Analyzer AI Platform
+app.py - Data Analyzer AI Platform (Large Dataset Optimized)
 """
 
 import streamlit as st
@@ -49,30 +49,46 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Safe File Loader
+# Memory-Efficient File Loader
+@st.cache_data(max_entries=2, show_spinner=False)
 def load_uploaded_file(file):
     try:
         if file.name.lower().endswith('.csv'):
-            return pd.read_csv(file)
+            # Read CSV with memory optimization
+            df = pd.read_csv(file)
         else:
-            return pd.read_excel(file)
+            df = pd.read_excel(file)
+        
+        # Optimize memory usage: convert object text columns with low cardinality to categorical
+        for col in df.select_dtypes(include=['object']).columns:
+            if df[col].nunique() / len(df) < 0.5:
+                df[col] = df[col].astype('category')
+
+        # Clean column names
+        df.columns = [str(col).strip() for col in df.columns]
+        return df
     except Exception as e:
-        st.error(f"Error reading file: {e}")
+        st.error(f"Error loading file: {e}")
         return None
 
-# Safe Model Trainer
-def train_risk_model(df, target_col):
+
+# Fast & Memory-Capped ML Model
+def train_risk_model(df, target_col, max_samples=30000):
     if target_col not in df.columns:
         raise ValueError(f"Selected target column '{target_col}' was not found in dataset.")
         
-    data = df.copy().dropna()
+    # Downsample large datasets for fast model execution without blowing RAM
+    if len(df) > max_samples:
+        data = df.sample(n=max_samples, random_state=42).dropna()
+    else:
+        data = df.dropna()
     
-    if data.empty or len(data) < 5:
+    if data.empty or len(data) < 10:
         raise ValueError("Insufficient non-null rows remaining to fit the machine learning model.")
 
     encoders = {}
 
-    # Convert datetimes to numerical features
+    # Datetime handling
     date_cols = data.select_dtypes(include=['datetime64', 'datetime', 'datetimetz']).columns.tolist()
     for col in date_cols:
         if col != target_col:
@@ -80,13 +96,13 @@ def train_risk_model(df, target_col):
             data[f"{col}_Month"] = data[col].dt.month
         data = data.drop(columns=[col])
 
-    # Drop high cardinality identifier columns
+    # Drop high-cardinality IDs
     for col in list(data.columns):
         if col != target_col:
             if str(col).lower().endswith('id') or data[col].nunique() >= len(data):
                 data = data.drop(columns=[col])
 
-    # Encode categorical features safely
+    # Categorical encoding
     cat_cols = data.select_dtypes(include=['object', 'category']).columns.tolist()
     for col in cat_cols:
         if col != target_col:
@@ -95,7 +111,7 @@ def train_risk_model(df, target_col):
             encoders[col] = le
 
     if target_col not in data.columns:
-        raise ValueError("Target column was dropped during automated feature filtering.")
+        raise ValueError("Target column was dropped during feature filtering.")
 
     X = data.drop(columns=[target_col])
     y = data[target_col]
@@ -105,8 +121,9 @@ def train_risk_model(df, target_col):
 
     target_type = type_of_target(y)
     
+    # Fast lightweight Random Forest configuration (n_estimators=30 for speed)
     if target_type == 'continuous':
-        model = RandomForestRegressor(n_estimators=100, random_state=42)
+        model = RandomForestRegressor(n_estimators=30, max_depth=10, random_state=42, n_jobs=-1)
         model.fit(X, y)
     else:
         if y.dtype == 'object' or isinstance(y.dtype, pd.CategoricalDtype):
@@ -114,7 +131,7 @@ def train_risk_model(df, target_col):
             y = target_le.fit_transform(y.astype(str))
             encoders[target_col] = target_le
             
-        model = RandomForestClassifier(n_estimators=100, random_state=42)
+        model = RandomForestClassifier(n_estimators=30, max_depth=10, random_state=42, n_jobs=-1)
         model.fit(X, y)
 
     importances = pd.DataFrame({
@@ -131,13 +148,14 @@ uploaded_file = st.sidebar.file_uploader("Upload CSV / Excel File", type=["csv",
 
 if uploaded_file is not None:
     try:
-        raw_df = load_uploaded_file(uploaded_file)
+        with st.spinner("Loading and optimizing dataset memory..."):
+            df = load_uploaded_file(uploaded_file)
 
-        if raw_df is not None and not raw_df.empty:
-            df = raw_df.copy()
-
-            # Clean column names (strip leading/trailing whitespaces)
-            df.columns = [str(col).strip() for col in df.columns]
+        if df is not None and not df.empty:
+            # Memory Alert Badge
+            num_rows = len(df)
+            if num_rows > 100000:
+                st.sidebar.warning(f"⚡ Large Dataset ({num_rows:,} rows). Automatic downsampling enabled for intensive ML/correlation calculations.")
 
             target_field = st.sidebar.selectbox("Select Target / Risk Field:", df.columns, index=0)
             palette = st.sidebar.selectbox("Select Dashboard Color Theme:", ["Blues", "Viridis", "Cividis", "Plasma", "Turbo", "Magma"], index=0)
@@ -177,12 +195,12 @@ if uploaded_file is not None:
             except Exception:
                 recommendations = []
 
-            # Main Title
+            # Main Header
             st.title("Data Analyzer AI")
             st.caption("Intelligent Data Analysis & Decision Support Platform")
             st.info(f"Detected Industry / Domain: **{domain_info.get('domain', 'General')}** (Confidence: **{domain_info.get('confidence', 'N/A')}**)")
 
-            # Main Navigation Tabs
+            # Tabs Interface
             tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
                 "📋 Overview",
                 "📊 Dashboard Analytics",
@@ -220,6 +238,10 @@ if uploaded_file is not None:
 
                     try:
                         fig = None
+                        
+                        # Downsample plotting frame for Scatter and Box Plot if > 20,000 rows
+                        plot_df = df.sample(n=20000, random_state=42) if len(df) > 20000 and chart_type in ["Scatter Plot", "Box Plot"] else df
+
                         if chart_type in ["Bar Chart", "Pie / Donut Chart", "Line Chart"]:
                             if agg_func == "Sum":
                                 grouped_df = df.groupby(x_axis, as_index=False)[y_axis].sum().head(15)
@@ -239,17 +261,18 @@ if uploaded_file is not None:
                                 fig = px.line(grouped_df, x=x_axis, y=y_axis, markers=True, title=f"{agg_func} Trend: {y_axis} over {x_axis}")
 
                         elif chart_type == "Scatter Plot":
-                            fig = px.scatter(df, x=x_axis, y=y_axis, title=f"Scatter Plot: {x_axis} vs {y_axis}", opacity=0.8)
+                            fig = px.scatter(plot_df, x=x_axis, y=y_axis, title=f"Scatter Plot: {x_axis} vs {y_axis} (Sampled)", opacity=0.7)
 
                         elif chart_type == "Box Plot":
-                            fig = px.box(df, x=x_axis, y=y_axis, points="outliers", title=f"Distribution of {y_axis} across {x_axis}")
+                            fig = px.box(plot_df, x=x_axis, y=y_axis, points="outliers", title=f"Distribution of {y_axis} across {x_axis} (Sampled)")
 
                         elif chart_type == "Histogram":
-                            fig = px.histogram(df, x=x_axis, nbins=30, marginal="box", title=f"Histogram of {x_axis}")
+                            fig = px.histogram(plot_df, x=x_axis, nbins=30, title=f"Histogram of {x_axis}")
 
                         elif chart_type == "Heatmap":
                             if len(num_cols) >= 2:
-                                corr_data = df[num_cols].corr()
+                                sample_num_df = df[num_cols].sample(n=min(len(df), 30000), random_state=42)
+                                corr_data = sample_num_df.corr()
                                 fig = px.imshow(corr_data, text_auto=True, color_continuous_scale="RdBu_r", title="Correlation Matrix Heatmap")
                             else:
                                 st.warning("Heatmap requires at least two numerical columns.")
@@ -259,7 +282,7 @@ if uploaded_file is not None:
                             st.plotly_chart(fig, use_container_width=True)
 
                     except Exception as err:
-                        st.error(f"Could not render chart with selected settings: {err}")
+                        st.error(f"Could not render chart: {err}")
 
             with tab3:
                 st.subheader("Data Quality & Integrity")
@@ -279,7 +302,7 @@ if uploaded_file is not None:
 
                 with col_q2:
                     st.write("**Data Integrity Metrics**")
-                    st.write(f"- Duplicate Rows: **{quality_info.get('duplicate_rows', 0)}**")
+                    st.write(f"- Duplicate Rows: **{quality_info.get('duplicate_rows', 0):,}**")
                     st.write(f"- Empty Columns: **{len(quality_info.get('empty_cols', []))}**")
                     st.write(f"- Columns with Outliers: **{len(quality_info.get('outliers', {}))}**")
 
@@ -306,12 +329,13 @@ if uploaded_file is not None:
             with tab6:
                 st.subheader(f"Feature Importance for Target: '{target_field}'")
                 try:
-                    model, encoders, importances, feature_names = train_risk_model(df, target_field)
-                    fig_imp = px.bar(importances.head(10), x='Importance', y='Feature', orientation='h', title="Top Drivers / Features Influencing Target Variable")
-                    fig_imp.update_layout(yaxis={'categoryorder': 'total ascending'}, height=400)
-                    st.plotly_chart(fig_imp, use_container_width=True)
+                    with st.spinner("Training lightweight feature importance model..."):
+                        model, encoders, importances, feature_names = train_risk_model(df, target_field)
+                        fig_imp = px.bar(importances.head(10), x='Importance', y='Feature', orientation='h', title="Top Drivers / Features Influencing Target Variable")
+                        fig_imp.update_layout(yaxis={'categoryorder': 'total ascending'}, height=400)
+                        st.plotly_chart(fig_imp, use_container_width=True)
                 except Exception as e:
-                    st.warning(f"Feature importance could not be calculated for '{target_field}': {e}")
+                    st.warning(f"Feature importance calculation skipped for '{target_field}': {e}")
 
             with tab7:
                 st.subheader("Evidence-Based Data Analyst Recommendations")
@@ -353,7 +377,7 @@ if uploaded_file is not None:
             st.warning("Uploaded file is empty or could not be parsed.")
             
     except Exception as top_err:
-        st.error(" An unexpected error occurred while processing the app:")
+        st.error("An error occurred during app execution:")
         st.code(traceback.format_exc(), language="python")
 
 else:
