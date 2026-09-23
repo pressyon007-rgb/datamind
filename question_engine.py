@@ -1,5 +1,9 @@
-import pandas as pd
+"""
+question_engine.py - Analytical Exploration & Deterministic Q&A Engine
+"""
+
 import numpy as np
+import pandas as pd
 
 
 def _find_column(df, keywords):
@@ -10,29 +14,49 @@ def _find_column(df, keywords):
     return None
 
 
-def generate_questions(df, insights=None, sheets=None):
+def generate_analytical_questions(df, domain_info=None):
+    """
+    Produces dynamic analytical questions based on dataset structure and domain.
+    """
     questions = []
-    numeric_columns = df.select_dtypes(include=np.number).columns.tolist()
+    domain = domain_info.get("domain", "General") if isinstance(domain_info, dict) else "General"
+    num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    cat_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
 
-    sales_column = _find_column(df, ["sales", "revenue", "amount", "income", "profit"])
-    product_column = _find_column(df, ["product", "item", "product name"])
-    customer_column = _find_column(df, ["customer", "client", "buyer"])
+    if cat_cols and num_cols:
+        questions.append({
+            "category": "Group Comparisons",
+            "question": f"How does the distribution of '{num_cols[0]}' vary across different '{cat_cols[0]}' categories?",
+            "purpose": "Identifies operational variances across organizational or categorical divisions."
+        })
 
-    if sales_column:
-        questions.append(f"Which {product_column or 'category'} has the highest {sales_column}?")
-        questions.append(f"What is the total {sales_column} in the dataset?")
+    if len(num_cols) >= 2:
+        questions.append({
+            "category": "Linear Correlation",
+            "question": f"Is there a statistical correlation between '{num_cols[0]}' and '{num_cols[1]}'?",
+            "purpose": "Evaluates potential co-dependence between primary numerical metrics."
+        })
 
-    if customer_column:
-        questions.append(f"How many unique {customer_column} entries are recorded?")
+    if domain == "Healthcare / Clinical":
+        questions.append({
+            "category": "Clinical Diagnostic Variance",
+            "question": "Which diagnostic measurements exhibit the highest statistical dispersion among target patient groups?",
+            "purpose": "Highlights critical physical dimensions useful for classification modeling."
+        })
+    elif domain == "Human Resources (HR)":
+        questions.append({
+            "category": "Workforce Retention",
+            "question": "Are specific job levels or departments experiencing disproportionate compensation or tenure variance?",
+            "purpose": "Evaluates equity and potential turnover risk factors across departments."
+        })
+    else:
+        questions.append({
+            "category": "Distribution Dynamics",
+            "question": "Are there skewed distributions or multi-modal clusters in the core numeric attributes?",
+            "purpose": "Determines whether data normalization or segmentation is required."
+        })
 
-    for col in numeric_columns[:3]:
-        questions.append(f"What is the statistical summary of {col}?")
-
-    if not questions:
-        for column in df.columns[:5]:
-            questions.append(f"What insights can be drawn from {column}?")
-
-    return list(dict.fromkeys(questions))
+    return questions
 
 
 def answer_question(df, question, insights=None, recommendations=None):
