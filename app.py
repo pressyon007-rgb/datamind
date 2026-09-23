@@ -1,9 +1,12 @@
 import os
 import sys
 
-# Ensure parent directory is added to sys.path for Streamlit Cloud module resolution
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Get the exact folder where app.py lives
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# Add the root directory to Python's search path
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
 import re
 import html
 import urllib.parse
