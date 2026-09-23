@@ -1,94 +1,53 @@
-import os
-import streamlit as st
-
-# Safe import for python-dotenv
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
-
-# Safe import for google-genai
-try:
-    from google import genai
-    HAS_GENAI = True
-except ImportError:
-    HAS_GENAI = False
-
-
-def _get_api_key():
-    """Fetch API key from Streamlit Secrets or Environment Variables."""
-    if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets:
-        return st.secrets["GEMINI_API_KEY"]
-    return os.getenv("GEMINI_API_KEY")
-
-
-def ask_data_analyst(
-    question,
-    calculated_answer=None,
-    evidence=None,
-    data_context=None,
-    insights=None,
-    recommendations=None
-):
-    if not HAS_GENAI:
-        return (
-            "⚠️ Google GenAI SDK (`google-genai`) is not installed in the runtime environment. "
-            "Please add `google-genai>=0.1.0` to `requirements.txt`."
-        )
-
-    api_key = _get_api_key()
-
-    if not api_key:
-        return (
-            "⚠️ Gemini API key is not configured. "
-            "Please add `GEMINI_API_KEY` to Streamlit Secrets or your local `.env` file."
-        )
-
-    try:
-        client = genai.Client(api_key=api_key)
-
-        prompt = f"""
-You are an experienced Business Intelligence Analyst.
-
-Answer the user's question using ONLY the uploaded dataset
-and the calculated evidence provided below.
-
-Do not invent numbers.
-
-DATA CONTEXT:
-{data_context}
-
-CALCULATED ANSWER:
-{calculated_answer}
-
-EVIDENCE:
-{evidence}
-
-BUSINESS INSIGHTS:
-{insights}
-
-RECOMMENDATIONS:
-{recommendations}
-
-USER QUESTION:
-{question}
-
-Provide:
-1. Direct answer
-2. Evidence from the data
-3. Business meaning
-4. Recommended action
-
-Keep the answer practical and understandable to a business manager.
+"""
+ai_analyst.py - Gemini AI Integration for Custom Data Queries
 """
 
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt
-        )
+import os
+import google.generativeai as genai
 
+
+def ask_data_analyst(question, data_context, insights=None, recommendations=None):
+    """
+    Sends the user's analytical question and dataset context to Gemini.
+    """
+    api_key = os.getenv("GEMINI_API_KEY")
+    
+    if not api_key:
+        return "⚠️ **GEMINI_API_KEY environment variable is missing.** Please set your Gemini API key in your environment or Streamlit secrets to enable AI chat."
+
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel("gemini-2.5-flash")
+
+        # Construct prompt payload
+        prompt = f"""
+You are an expert Data Analyst AI collaborator. Analyze the provided dataset overview and answer the user's business question with clear, actionable insights.
+
+### DATASET CONTEXT:
+{data_context}
+
+### DATA QUALITY SUMMARY:
+{insights if insights else 'No quality metrics supplied.'}
+
+### SYSTEM RECOMMENDATIONS:
+{recommendations if recommendations else 'No automated recommendations generated.'}
+
+---
+
+### USER QUESTION:
+{question}
+
+---
+
+### INSTRUCTIONS:
+- Answer directly based strictly on the provided dataset context and metrics.
+- Keep the tone professional, concise, and structured.
+- Use bold text for key metrics or findings.
+- Offer 2-3 practical next steps or actionable recommendations where appropriate.
+"""
+
+        response = model.generate_content(prompt)
         return response.text
 
     except Exception as e:
-        return f"AI analysis error: {str(e)}"
+        return f"An error occurred while calling the Gemini API: {str(e)}"
