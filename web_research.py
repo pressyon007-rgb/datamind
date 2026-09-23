@@ -1,18 +1,20 @@
 import os
-import json
-import pandas as pd
 
-from google import genai
+# Safe import for google-genai
+try:
+    from google import genai
+    HAS_GENAI = True
+except ImportError:
+    HAS_GENAI = False
 
-
-# ==========================================================
-# CREATE GEMINI CLIENT
-# ==========================================================
-
-def get_gemini_client():
-
-    api_key = os.getenv("GEMINI_API_KEY")
-
+def research_dataset(query, df=None):
+    if not HAS_GENAI:
+        return {
+            "domain": "General Business Analytics",
+            "analysis": "Google GenAI SDK is not available in the runtime environment."
+        }
+    
+    # Rest of your research_dataset logic...
     if not api_key:
         raise ValueError(
             "GEMINI_API_KEY was not found. "
