@@ -1,51 +1,44 @@
 """
-data_context.py - Dataset Context Serialization
+data_context.py - Prepares DataFrame summaries for LLM prompt context.
 """
 
+import pandas as pd
 import numpy as np
 
 
-def create_data_context(df):
-    context = []
+def create_data_context(df, max_sample_rows=5):
+    """
+    Generates a structured text overview of the uploaded DataFrame.
+    """
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return "No valid dataset uploaded."
 
-    context.append("DATASET OVERVIEW")
-    context.append(f"Rows: {len(df)}")
-    context.append(f"Columns: {len(df.columns)}")
+    total_rows, total_cols = df.shape
+    columns_list = list(df.columns)
+    
+    num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    cat_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
+    date_cols = df.select_dtypes(include=['datetime64', 'datetime']).columns.tolist()
 
-    context.append("\nCOLUMNS")
-    for column in df.columns:
-        context.append(
-            f"- {column}: {df[column].dtype}, unique={df[column].nunique()}"
-        )
+    context_lines = [
+        f"DATASET STRUCTURE OVERVIEW:",
+        f"- Total Rows: {total_rows:,}",
+        f"- Total Columns: {total_cols}",
+        f"- Columns: {', '.join([str(c) for c in columns_list])}",
+        f"- Numerical Fields ({len(num_cols)}): {', '.join([str(c) for c in num_cols]) if num_cols else 'None'}",
+        f"- Categorical Fields ({len(cat_cols)}): {', '.join([str(c) for c in cat_cols]) if cat_cols else 'None'}",
+        f"- Datetime Fields ({len(date_cols)}): {', '.join([str(c) for c in date_cols]) if date_cols else 'None'}",
+        "\nFIRST 5 SAMPLE ROWS:"
+    ]
 
-    numeric = df.select_dtypes(include=np.number).columns.tolist()
-    if numeric:
-        context.append("\nNUMERIC SUMMARY")
-        for column in numeric:
-            series = df[column].dropna()
-            if series.empty:
-                continue
+    # Sample rows formatted as text
+    sample_df = df.head(max_sample_rows)
+    context_lines.append(sample_df.to_string(index=False))
 
-            context.append(
-                f"{column}: total={series.sum():.2f}, "
-                f"average={series.mean():.2f}, "
-                f"median={series.median():.2f}, "
-                f"min={series.min():.2f}, "
-                f"max={series.max():.2f}"
-            )
+    # Numerical Summary Statistics
+    if num_cols:
+        context_lines.append("\nNUMERICAL SUMMARY STATISTICS:")
+        stats = df[num_cols].describe().T[['mean', 'std', 'min', '50%', 'max']].to_string()
+        context_lines.append(stats)
 
-    categorical = df.select_dtypes(
-        include=["object", "category", "bool"]
-    ).columns.tolist()
-
-    if categorical:
-        context.append("\nCATEGORICAL SUMMARY")
-        for column in categorical:
-            if df[column].nunique() <= 50:
-                values = df[column].value_counts().head(10).to_dict()
-                context.append(f"{column}: {values}")
-
-    context.append("\nSAMPLE DATA")
-    context.append(df.head(10).to_string(index=False))
-
-    return "\n".join(context)
+    return "\n".join(context_lines)
