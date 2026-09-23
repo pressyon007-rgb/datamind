@@ -1,7 +1,7 @@
 import os
 import streamlit as st
 
-# Safe import for python-dotenv (prevents crashes on Streamlit Cloud)
+# Safe import for python-dotenv
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -18,10 +18,8 @@ except ImportError:
 
 def _get_api_key():
     """Fetch API key from Streamlit Secrets or Environment Variables."""
-    # 1. Try Streamlit Cloud secrets first
     if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets:
         return st.secrets["GEMINI_API_KEY"]
-    # 2. Fall back to local .env environment variable
     return os.getenv("GEMINI_API_KEY")
 
 
@@ -35,7 +33,7 @@ def ask_data_analyst(
 ):
     if not HAS_GENAI:
         return (
-            "⚠️ Google GenAI SDK (`google-genai`) is not installed. "
+            "⚠️ Google GenAI SDK (`google-genai`) is not installed in the runtime environment. "
             "Please add `google-genai>=0.1.0` to `requirements.txt`."
         )
 
@@ -44,7 +42,7 @@ def ask_data_analyst(
     if not api_key:
         return (
             "⚠️ Gemini API key is not configured. "
-            "Please set `GEMINI_API_KEY` in Streamlit Cloud Secrets or your `.env` file."
+            "Please add `GEMINI_API_KEY` to Streamlit Secrets or your local `.env` file."
         )
 
     try:
